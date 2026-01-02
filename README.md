@@ -3,7 +3,11 @@
 This bundle provides a standalone setup for turning a Debian 13 laptop into an autonomous AI Agent Box.
 
 ## Components
-- `setup.sh`: Idempotent installer script.
+- `setup.sh`: Master orchestrator.
+- `scripts/`: Modular setup scripts.
+  - `01_base_deps.sh`: System dependencies.
+  - `02_antigravity.sh`: Installs Antigravity CLI.
+  - `03_service.sh`: Service setup.
 - `config.template.env`: Configuration template.
 - `agent_watcher.py`: The service that polls GitHub and triggers agents.
 
@@ -25,14 +29,18 @@ This bundle provides a standalone setup for turning a Debian 13 laptop into an a
    cd agent_box_setup
    sudo ./setup.sh
    ```
-   This will:
+   This will run the modular scripts in order to:
    - Install system dependencies (Python, Node, Git, Build-essential).
    - Install GitHub CLI (`gh`).
+   - Download and install **Antigravity CLI** to `/usr/local/bin`.
    - Create a dedicated directory at `/opt/agent-box`.
-   - Create a python virtual environment.
-   - Install the `agent-watcher` systemd service.
+   - Enable the `agent-watcher` systemd service.
 
-3. **Configure the Agent**:
+3. **Authenticate**:
+   - **GitHub**: `gh auth login`
+   - **Antigravity**: `antigravity login` (Follow terminal prompts).
+
+4. **Configure the Agent**:
    Edit the configuration file generated at `/opt/agent-box/.env`:
    ```bash
    nano /opt/agent-box/.env
