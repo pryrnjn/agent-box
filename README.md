@@ -52,7 +52,7 @@ This bundle provides a standalone setup for turning a Debian 13 laptop into an a
    - `GITHUB_USER`: The bot username (must match the assignee).
    - `GIT_NAME` / `GIT_EMAIL`: Identity for agent commits.
    - `AGENT_COMMAND`: The command to run your agent.
-     - Example: `gemini --yolo "Fix the issue in @CURRENT_ISSUE.md. Follow @GEMINI.md"`
+     - Example: `gemini --yolo "Fix the issue in @CURRENT_ISSUE.md. Read @GEMINI.md. Strict Branching Policy."`
    - **`GEMINI_API_KEY`**: Set your Google Gemini API key here.
 
 4. **Authenticate GitHub CLI**:

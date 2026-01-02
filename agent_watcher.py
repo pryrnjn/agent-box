@@ -91,8 +91,8 @@ def check_dependencies(issue):
         return True
     
     # Look for "Depends on #123" or "Blocked by #123"
-    # Supported formats: "Depends on #123", "depends on #123", "Blocked by #123"
-    matches = re.findall(r'(?:[Dd]epends on|[Bb]locked by) #(\d+)', body)
+    # Supported formats: "Depends on #123", "depends on #123", "Blocked by #123", "Dependencies #123"
+    matches = re.findall(r'(?:[Dd]epends on|[Dd]ependencies|[Bb]locked by) #(\d+)', body)
     
     if not matches:
         return True
@@ -239,6 +239,8 @@ def process_issue(issue):
         else:
             logger.error(f"Agent failed with exit code {return_code}")
             update_labels(number, add_labels=[ERROR_LABEL], remove_labels=[WIP_LABEL])
+    except Exception as e:
+        logger.error(f"Exception during agent execution: {e}")
         update_labels(number, add_labels=[ERROR_LABEL], remove_labels=[WIP_LABEL])
 
 import sys
