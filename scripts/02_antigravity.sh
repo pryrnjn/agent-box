@@ -14,40 +14,29 @@ if command -v antigravity &> /dev/null; then
     exit 0
 fi
 
-log_info "Downloading Antigravity CLI..."
-
-# Target destination
-BIN_DIR="/usr/local/bin"
-TEMP_DIR=$(mktemp -d)
-
-# Download URL (based on user info)
-# Assuming it is a direct binary or a tarball. 
-# Since we don't know the exact format, I will implement a robust guess:
-# 1. Try to fetch the 'linux' binary.
-# NOTE: The user provided https://antigravity.google/download/linux
-# This might effectively be a redirect to a binary or a page.
-# For this script, I will try to fetch it as a file.
-
-DOWNLOAD_URL="https://antigravity.google/download/linux"
-TARGET_FILE="$TEMP_DIR/antigravity"
-
+log_info "Downloading Antigravity CLI from $DOWNLOAD_URL..."
 wget -q --show-progress -O "$TARGET_FILE" "$DOWNLOAD_URL"
+log_info "Download complete. Size: $(du -h "$TARGET_FILE" | cut -f1)"
 
 # Check if it is a binary or an archive
 FILE_TYPE=$(file "$TARGET_FILE")
+log_info "Detected file type: $FILE_TYPE"
 
 if [[ "$FILE_TYPE" == *"executable"* || "$FILE_TYPE" == *"ELF"* ]]; then
     # It's a binary
+    log_info "Installing binary directly..."
     mv "$TARGET_FILE" "$BIN_DIR/antigravity"
     chmod +x "$BIN_DIR/antigravity"
     log_success "Installed Antigravity binary to $BIN_DIR/antigravity"
 
 elif [[ "$FILE_TYPE" == *"Zip archive"* ]]; then
     # It's a zip
+    log_info "Unzipping archive..."
     unzip -q "$TARGET_FILE" -d "$TEMP_DIR"
     # Find the binary inside
     BINARY=$(find "$TEMP_DIR" -type f -name "antigravity" | head -n 1)
     if [ -n "$BINARY" ]; then
+        log_info "Found binary at $BINARY. Moving to installation path..."
         mv "$BINARY" "$BIN_DIR/antigravity"
         chmod +x "$BIN_DIR/antigravity"
         log_success "Unzipped and installed Antigravity binary."
@@ -58,9 +47,11 @@ elif [[ "$FILE_TYPE" == *"Zip archive"* ]]; then
 
 elif [[ "$FILE_TYPE" == *"gzip compressed data"* ]]; then
      # It's a tarball
+    log_info "Extracting tarball..."
     tar -xzf "$TARGET_FILE" -C "$TEMP_DIR"
     BINARY=$(find "$TEMP_DIR" -type f -name "antigravity" | head -n 1)
     if [ -n "$BINARY" ]; then
+        log_info "Found binary at $BINARY. Moving to installation path..."
         mv "$BINARY" "$BIN_DIR/antigravity"
         chmod +x "$BIN_DIR/antigravity"
         log_success "Extracted and installed Antigravity binary."

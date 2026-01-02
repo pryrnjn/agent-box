@@ -12,15 +12,15 @@ USER_NAME=${SUDO_USER:-$USER}
 
 # Helper Functions
 log_info() {
-    echo -e "${BLUE}[INFO] $1${NC}"
+    echo -e "${BLUE}[$(date '+%Y-%m-%d %H:%M:%S')][INFO] $1${NC}"
 }
 
 log_success() {
-    echo -e "${GREEN}[SUCCESS] $1${NC}"
+    echo -e "${GREEN}[$(date '+%Y-%m-%d %H:%M:%S')][SUCCESS] $1${NC}"
 }
 
 log_error() {
-    echo -e "${RED}[ERROR] $1${NC}"
+    echo -e "${RED}[$(date '+%Y-%m-%d %H:%M:%S')][ERROR] $1${NC}"
 }
 
 check_root() {

@@ -35,22 +35,27 @@ chown -R "$USER_NAME:$USER_NAME" "$INSTALL_DIR"
 log_info "Repo Target: $REPO_PATH"
 
 # Run as user
+log_info "Switching to user '$USER_NAME' to configure git..."
 sudo -u "$USER_NAME" bash << EOF
     # Setup Git Identity
     if [ ! -z "$GIT_NAME" ]; then
+        echo "Configuring git user.name: $GIT_NAME"
         git config --global user.name "$GIT_NAME"
     fi
     if [ ! -z "$GIT_EMAIL" ]; then
+        echo "Configuring git user.email: $GIT_EMAIL"
         git config --global user.email "$GIT_EMAIL"
     fi
 
     # Check if gh is authenticated
+    echo "Checking 'gh' authentication status..."
     if gh auth status &>/dev/null; then
+        echo "Authenticated."
         if [ ! -d "$REPO_PATH" ]; then
-            echo "Cloning $GITHUB_REPO..."
+            echo "Cloning $GITHUB_REPO into $REPO_PATH..."
             gh repo clone "$GITHUB_REPO" "$REPO_PATH"
         else
-            echo "Repo already exists. Updating..."
+            echo "Repo already exists at $REPO_PATH. Pulling latest changes..."
             cd "$REPO_PATH"
             git pull
         fi
