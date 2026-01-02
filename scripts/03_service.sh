@@ -88,6 +88,19 @@ ExecStart=$INSTALL_DIR/venv/bin/python3 $INSTALL_DIR/agent_watcher.py
 Restart=always
 RestartSec=60
 
+# --- Security Sandboxing ---
+# Prevent writing to system directories (only allow writing to install dir)
+ProtectSystem=strict
+ReadWritePaths=$INSTALL_DIR
+# Prevent accessing other user's home directories
+ProtectHome=read-only
+# Create a private /tmp for this service
+PrivateTmp=true
+# Prevent escalating privileges
+NoNewPrivileges=true
+Restart=always
+RestartSec=60
+
 [Install]
 WantedBy=multi-user.target
 EOF

@@ -226,6 +226,22 @@ def prepare_workspace(issue):
 
     return str(repo_path)
 
+PR_BASE_BRANCH = os.getenv('PR_BASE_BRANCH', 'develop')
+
+def determine_pr_base(issue):
+    """Determine the target branch for the PR."""
+    body = issue.get('body', '')
+    
+    # Check for explicit override in issue body
+    # Pattern: "PR Target: branch_name" or "Base: branch_name"
+    match = re.search(r'(?:PR Target|Base):\s*([\w/-]+)', body, re.IGNORECASE)
+    if match:
+        target = match.group(1).strip()
+        logger.info(f"Detected explicit PR target from issue body: {target}")
+        return target
+        
+    return PR_BASE_BRANCH
+
 def process_issue(issue):
     """Process a single issue."""
     number = issue['number']
@@ -235,14 +251,13 @@ def process_issue(issue):
     logger.info(f"Processing Issue #{number}: {title}")
     
     # 1. Mark as WIP
-    # We trigger on assignment, so we just add the WIP label to filter it out from next search
     update_labels(number, add_labels=[WIP_LABEL])
     
     # 2. Prepare Workspace
     try:
         workspace_dir = prepare_workspace(issue)
         
-        # Write issue context to a file for the agent to consume safely
+        # Write issue context to a file
         issue_file = Path(workspace_dir) / "CURRENT_ISSUE.md"
         with open(issue_file, "w") as f:
             f.write(f"# Issue #{number}: {title}\n\n")
@@ -258,7 +273,6 @@ def process_issue(issue):
         return
 
     # 3. Construct Command
-    # Replace placeholders
     cmd_str = AGENT_COMMAND_TEMPLATE.format(
         issue_url=url,
         issue_number=number,
@@ -304,8 +318,13 @@ def process_issue(issue):
                 )
                 current_branch = branch_proc.stdout.strip()
                 
-                if current_branch == 'main' or current_branch == 'master':
-                    logger.warning("Agent worked on main branch. Skipping PR creation to avoid direct push issues.")
+                # Determine Base Branch for PR
+                pr_base = determine_pr_base(issue)
+                
+                if current_branch == pr_base: # Don't PR into self
+                     logger.warning(f"Current branch IS the base branch ({current_branch}). Skipping PR.")
+                elif current_branch in ['main', 'master', 'develop']:
+                    logger.warning(f"Agent worked on protected branch {current_branch}. Skipping PR.")
                 else:
                     logger.info(f"Pushing branch {current_branch}...")
                     subprocess.run(['git', 'push', '-u', 'origin', current_branch], cwd=workspace_dir, check=True)
@@ -320,19 +339,19 @@ def process_issue(issue):
                         pr_url = pr_list[0]['url']
                         logger.info(f"PR already exists: {pr_url}")
                     else:
-                        logger.info("Creating PR...")
-                        # We use the issue title for PR title + " (Agent)"
-                        # And link the issue in the body
+                        logger.info(f"Creating PR into {pr_base}...")
                         pr_body = f"Agent completed work for #{number}. Closes #{number}.\n\n/gemini review"
+                        
+                        # Note: gh pr create fails if base branch doesn't exist on remote.
+                        # We assume the base exists.
                         pr_create_out = run_gh_command([
                             'pr', 'create', 
                             '--title', f"{title} (Agent)", 
                             '--body', pr_body,
                             '--head', current_branch,
-                            '--base', 'main', # or develop, ideally configurable
+                            '--base', pr_base,
                             '--repo', GITHUB_REPO
                         ])
-                        # pr create output is the URL
                         pr_url = pr_create_out.strip()
                         logger.info(f"PR Created: {pr_url}")
                         
@@ -347,8 +366,6 @@ def process_issue(issue):
             except Exception as pp_e:
                 logger.error(f"Post-processing failed (Push/PR): {pp_e}")
                 
-            # Even if push/pr fails, we mark as done because the agent did the code work? 
-            # Or should we keep it as WIP? Let's mark Done for now, but logs show error.
             update_labels(number, add_labels=[DONE_LABEL], remove_labels=[WIP_LABEL])
         else:
             logger.error(f"Agent failed with exit code {return_code}")

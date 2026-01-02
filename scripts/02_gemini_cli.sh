@@ -16,8 +16,12 @@ if ! command -v npm &> /dev/null; then
 fi
 
 # Install Gemini CLI via npm
-log_info "Installing @google/gemini-cli globally..."
-npm install -g @google/gemini-cli
+if command -v gemini &> /dev/null; then
+    log_info "Gemini CLI is already installed. Skipping installation."
+else
+    log_info "Installing @google/gemini-cli globally..."
+    npm install -g @google/gemini-cli
+fi
 
 # Verify installation
 if command -v gemini &> /dev/null; then
