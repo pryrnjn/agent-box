@@ -35,10 +35,12 @@ This bundle provides a standalone setup for turning a Debian 13 laptop into an a
    - Download and install **Antigravity CLI** to `/usr/local/bin`.
    - Create a dedicated directory at `/opt/agent-box`.
    - Enable the `agent-watcher` systemd service.
+   - Attempt to clone the repository (if authenticated).
 
 3. **Authenticate**:
    - **GitHub**: `gh auth login`
    - **Antigravity**: `antigravity login` (Follow terminal prompts).
+   - *After auth, you can re-run `./setup.sh` to clone the repo automatically if it failed previously.*
 
 4. **Configure the Agent**:
    Edit the configuration file generated at `/opt/agent-box/.env`:
@@ -47,6 +49,7 @@ This bundle provides a standalone setup for turning a Debian 13 laptop into an a
    ```
    **Crucial Settings**:
    - `GITHUB_REPO`: The `owner/repo` you want to monitor.
+   - `GIT_NAME` / `GIT_EMAIL`: Identity for agent commits.
    - `AGENT_COMMAND`: The command to run your agent.
      - Example: `antigravity run --issue {issue_url}`
    - `TRIGGER_LABEL`: The label that triggers the agent (default: `status:pending-agent`).

@@ -23,6 +23,9 @@ echo -e "${GREEN}Step 2: Antigravity CLI${NC}"
 echo -e "${GREEN}Step 3: Service Setup${NC}"
 "$SCRIPTS_SUBDIR/03_service.sh"
 
+echo -e "${GREEN}Step 4: Repository Setup${NC}"
+"$SCRIPTS_SUBDIR/04_repo_setup.sh"
+
 echo -e "${GREEN}=== Setup Complete! ===${NC}"
 echo "Please configure your environment: nano /opt/agent-box/.env"
 echo "Then start the service: systemctl start agent-watcher.service"
