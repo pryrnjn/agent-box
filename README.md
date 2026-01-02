@@ -6,7 +6,7 @@ This bundle provides a standalone setup for turning a Debian 13 laptop into an a
 - `setup.sh`: Master orchestrator.
 - `scripts/`: Modular setup scripts.
   - `01_base_deps.sh`: System dependencies.
-  - `02_antigravity.sh`: Installs Antigravity CLI.
+  - `02_gemini_cli.sh`: Installs Gemini CLI (`@google/gemini-cli`).
   - `03_service.sh`: Service setup.
 - `config.template.env`: Configuration template.
 - `agent_watcher.py`: The service that polls GitHub and triggers agents.
@@ -16,6 +16,7 @@ This bundle provides a standalone setup for turning a Debian 13 laptop into an a
 - Root/Sudo access.
 - Internet connection.
 - A GitHub account for the bot (e.g., `pr-gemini`).
+- A Gemini API Key (from Google AI Studio).
 
 ## Installation
 
@@ -32,14 +33,13 @@ This bundle provides a standalone setup for turning a Debian 13 laptop into an a
    This will run the modular scripts in order to:
    - Install system dependencies (Python, Node, Git, Build-essential).
    - Install GitHub CLI (`gh`).
-   - Download and install **Antigravity CLI** to `/usr/local/bin`.
+   - Install **Gemini CLI** (`@google/gemini-cli`) globally.
    - Create a dedicated directory at `~/agent-box` (configurable).
    - Enable the `agent-watcher` systemd service.
    - Attempt to clone the repository (if authenticated).
 
 3. **Authenticate**:
    - **GitHub**: `gh auth login`
-   - **Antigravity**: `antigravity login` (Follow terminal prompts).
    - *After auth, you can re-run `./setup.sh` to clone the repo automatically if it failed previously.*
 
 4. **Configure the Agent**:
@@ -52,6 +52,8 @@ This bundle provides a standalone setup for turning a Debian 13 laptop into an a
    - `GITHUB_USER`: The bot username (must match the assignee).
    - `GIT_NAME` / `GIT_EMAIL`: Identity for agent commits.
    - `AGENT_COMMAND`: The command to run your agent.
+     - Example: `gemini --yolo "Fix the issue in @CURRENT_ISSUE.md. Follow @GEMINI.md"`
+   - **`GEMINI_API_KEY`**: Set your Google Gemini API key here.
 
 4. **Authenticate GitHub CLI**:
    The agent runs as the user who installed it (or the sudo caller). Authenticate `gh` for that user:
@@ -86,10 +88,10 @@ The watcher service logs its activity (polling, triggering) to two places:
 2.  **Log File**:
     Located at `~/agent-box/agent_watcher.log`.
 
-### Agent (Antigravity) Logs
-The output from the agent (Antigravity CLI) is captured by the system service.
+### Agent (Gemini) Logs
+The output from the agent (Gemini CLI) is captured by the system service.
 -   **Standard Output/Error**: Visible in the `journalctl` stream above when the agent is running.
--   **Internal Logs**: Antigravity may store its own debug logs in `~/.antigravity/logs/` or `~/.config/antigravity/` (depending on the tool's version).
+-   **Debug**: Ensure `GEMINI_API_KEY` is correct in `.env` if execution fails immediately.
 
 ## Idempotency
 You can re-run `./setup.sh` at any time to update dependencies or reset the agent scripts. It will preserve your `.env` config.

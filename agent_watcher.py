@@ -180,6 +180,17 @@ def process_issue(issue):
     # 2. Prepare Workspace
     try:
         workspace_dir = prepare_workspace(number)
+        
+        # Write issue context to a file for the agent to consume safely
+        issue_file = Path(workspace_dir) / "CURRENT_ISSUE.md"
+        with open(issue_file, "w") as f:
+            f.write(f"# Issue #{number}: {title}\n\n")
+            f.write(f"URL: {url}\n\n")
+            f.write("## Description\n")
+            f.write(issue.get('body', ''))
+            
+        logger.info(f"Written issue context to {issue_file}")
+        
     except Exception as e:
         logger.error(f"Failed to prepare workspace: {e}")
         update_labels(number, add_labels=[ERROR_LABEL], remove_labels=[WIP_LABEL])
@@ -198,27 +209,36 @@ def process_issue(issue):
     # 4. Run Agent
     start_time = time.time()
     try:
-        # Run command in the workspace directory
-        process = subprocess.run(
+        # Run command in the workspace directory with streaming output
+        logger.info(f"Starting agent process...")
+        process = subprocess.Popen(
             cmd_str, 
             shell=True, 
-            cwd=workspace_dir, # Run agent inside the repo
-            capture_output=False # Let output flow to stdout/stderr (captured by journalctl)
+            cwd=workspace_dir, 
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT, # Merge stderr into stdout
+            text=True,
+            bufsize=1 # Line buffered
         )
         
-        duration = time.time() - start_time
-        logger.info(f"Agent finished in {duration:.2f}s with return code {process.returncode}")
+        # Stream output to logger
+        for line in iter(process.stdout.readline, ''):
+            if line:
+                logger.info(f"[AGENT] {line.strip()}")
+                
+        process.wait()
+        return_code = process.returncode
         
-        if process.returncode == 0:
+        duration = time.time() - start_time
+        logger.info(f"Agent finished in {duration:.2f}s with return code {return_code}")
+
+        if return_code == 0:
             update_labels(number, add_labels=[DONE_LABEL], remove_labels=[WIP_LABEL])
             # Optional: Add comment
             # run_gh_command(['issue', 'comment', str(number), '--repo', GITHUB_REPO, '--body', f"Agent finished successfully in {duration:.2f}s."])
         else:
-            logger.error("Agent command failed.")
+            logger.error(f"Agent failed with exit code {return_code}")
             update_labels(number, add_labels=[ERROR_LABEL], remove_labels=[WIP_LABEL])
-            
-    except Exception as e:
-        logger.error(f"Exception during agent execution: {e}")
         update_labels(number, add_labels=[ERROR_LABEL], remove_labels=[WIP_LABEL])
 
 import sys

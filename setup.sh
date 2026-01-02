@@ -25,8 +25,8 @@ chmod +x "$SCRIPTS_SUBDIR"/*.sh
 echo -e "${GREEN}Step 1: Base Dependencies${NC}"
 "$SCRIPTS_SUBDIR/01_base_deps.sh"
 
-echo -e "${GREEN}Step 2: Antigravity CLI${NC}"
-"$SCRIPTS_SUBDIR/02_antigravity.sh"
+echo -e "${GREEN}Step 2: Installing Gemini CLI${NC}"
+"$SCRIPTS_SUBDIR/02_gemini_cli.sh"
 
 echo -e "${GREEN}Step 3: Service Setup${NC}"
 "$SCRIPTS_SUBDIR/03_service.sh"
