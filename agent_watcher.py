@@ -134,20 +134,49 @@ def update_labels(issue_number, add_labels=None, remove_labels=None):
     except Exception as e:
         logger.error(f"Failed to update labels for #{issue_number}: {e}")
 
-def prepare_workspace(issue_number):
+BRANCH_NAME_TEMPLATE = os.getenv('BRANCH_NAME_TEMPLATE', 'feat/issue-{number}-{safe_title}')
+
+def generate_branch_name(number, title):
+    """Generate a branch name based on conventions."""
+    safe_title = re.sub(r'[^a-zA-Z0-9-]', '-', title.lower()).strip('-')
+    safe_title = re.sub(r'-+', '-', safe_title) # Collapse multiple dashes
+    
+    # Special handling for "Phase X" to match GEMINI.md policy: feat/phase{N}-{feature-name}
+    # Example Title: "Phase 1: Implement Working Memory" -> feat/phase1-implement-working-memory
+    phase_match = re.match(r'phase\s*(\d+)[:\s-]*', title, re.IGNORECASE)
+    if phase_match:
+        phase_num = phase_match.group(1)
+        # Remove the "Phase X" prefix from the safe title to avoid redundancy
+        # safe_title currently has "phase-1-implement..."
+        # We want strict control.
+        # Let's clean the original title of the prefix first
+        clean_title_raw = re.sub(r'^phase\s*\d+[:\s-]*', '', title, flags=re.IGNORECASE)
+        clean_safe_title = re.sub(r'[^a-zA-Z0-9-]', '-', clean_title_raw.lower()).strip('-')
+        clean_safe_title = re.sub(r'-+', '-', clean_safe_title)
+        
+        branch_name = f"feat/phase{phase_num}-{clean_safe_title}"
+        return branch_name
+
+    # Fallback to the configured template for non-phase tasks
+    branch_name = BRANCH_NAME_TEMPLATE.format(
+        number=number,
+        title=safe_title, # raw safe title of full title
+        safe_title=safe_title
+    )
+    
+    return branch_name
+
+def prepare_workspace(issue):
     """Prepare the workspace for the agent."""
+    number = issue['number']
+    title = issue['title']
+    
     # Ensure base workspace exists
     base_path = Path(WORK_DIR_BASE)
     if not base_path.is_absolute():
         base_path = Path(os.getcwd()) / base_path
     
     base_path.mkdir(exist_ok=True)
-    
-    # Create a specific directory for this issue or just use a shared repo?
-    # Strategy: Clone the repo into 'workspace/repo_name'
-    # For now, let's assume a single persistent checkout that we pull/clean
-    # This might need to be more sophisticated (branch per issue) for a real agent setup
-    # But for "Agent Box", let's keep it simple: shared repo, unique branch.
     
     repo_name = GITHUB_REPO.split('/')[-1]
     repo_path = base_path / repo_name
@@ -156,13 +185,45 @@ def prepare_workspace(issue_number):
         logger.info(f"Cloning {GITHUB_REPO} into {repo_path}...")
         subprocess.run(['gh', 'repo', 'clone', GITHUB_REPO, str(repo_path)], check=True)
     
-    # Clean and Checkout
-    # Note: agents usually handle their own git state, but it help to start clean
     logger.info(f"Preparing git repo at {repo_path}...")
-    subprocess.run(['git', 'fetch', 'origin'], cwd=repo_path, check=True)
-    subprocess.run(['git', 'checkout', 'main'], cwd=repo_path, check=True) # or master/develop
-    subprocess.run(['git', 'pull', 'origin', 'main'], cwd=repo_path, check=True)
     
+    # 1. Fetch all
+    subprocess.run(['git', 'fetch', '--all'], cwd=repo_path, check=True)
+    
+    # 2. Determine target branch
+    target_branch = generate_branch_name(number, title)
+    logger.info(f"Target Branch: {target_branch}")
+    
+    # 3. Check if remote branch exists
+    # git ls-remote --heads origin branch_name
+    remote_exists = False
+    ls_remote = subprocess.run(
+        ['git', 'ls-remote', '--heads', 'origin', target_branch], 
+        cwd=repo_path, capture_output=True, text=True
+    )
+    if target_branch in ls_remote.stdout:
+        remote_exists = True
+        
+    # 4. Checkout
+    if remote_exists:
+        logger.info(f"Branch {target_branch} exists on remote. Checking out...")
+        subprocess.run(['git', 'checkout', target_branch], cwd=repo_path, check=True)
+        subprocess.run(['git', 'pull', 'origin', target_branch], cwd=repo_path, check=True)
+    else:
+        # Check local existence
+        logger.info(f"Checking for local branch {target_branch}...")
+        # Try checkout, if fail, create new from default (main/develop)
+        try:
+             subprocess.run(['git', 'checkout', target_branch], cwd=repo_path, check=True, capture_output=True)
+             logger.info("Switched to existing local branch.")
+        except subprocess.CalledProcessError:
+            logger.info(f"Creating new branch {target_branch} from main...")
+            subprocess.run(['git', 'checkout', 'main'], cwd=repo_path, check=True)
+            subprocess.run(['git', 'pull', 'origin', 'main'], cwd=repo_path, check=True)
+            subprocess.run(['git', 'checkout', '-b', target_branch], cwd=repo_path, check=True)
+            
+            # Push immediately to establish upstream? Maybe wait for first commit.
+
     return str(repo_path)
 
 def process_issue(issue):
@@ -179,7 +240,7 @@ def process_issue(issue):
     
     # 2. Prepare Workspace
     try:
-        workspace_dir = prepare_workspace(number)
+        workspace_dir = prepare_workspace(issue)
         
         # Write issue context to a file for the agent to consume safely
         issue_file = Path(workspace_dir) / "CURRENT_ISSUE.md"
@@ -233,9 +294,62 @@ def process_issue(issue):
         logger.info(f"Agent finished in {duration:.2f}s with return code {return_code}")
 
         if return_code == 0:
+            logger.info("Agent executed successfully. Handling post-processing (Push & PR)...")
+            try:
+                # 5. Post-Processing: Push & PR
+                # Detect current branch
+                branch_proc = subprocess.run(
+                    ['git', 'rev-parse', '--abbrev-ref', 'HEAD'], 
+                    cwd=workspace_dir, capture_output=True, text=True, check=True
+                )
+                current_branch = branch_proc.stdout.strip()
+                
+                if current_branch == 'main' or current_branch == 'master':
+                    logger.warning("Agent worked on main branch. Skipping PR creation to avoid direct push issues.")
+                else:
+                    logger.info(f"Pushing branch {current_branch}...")
+                    subprocess.run(['git', 'push', '-u', 'origin', current_branch], cwd=workspace_dir, check=True)
+                    
+                    # Create PR
+                    # Check if PR exists first
+                    pr_list_out = run_gh_command(['pr', 'list', '--head', current_branch, '--json', 'url'])
+                    pr_list = json.loads(pr_list_out)
+                    
+                    pr_url = ""
+                    if pr_list:
+                        pr_url = pr_list[0]['url']
+                        logger.info(f"PR already exists: {pr_url}")
+                    else:
+                        logger.info("Creating PR...")
+                        # We use the issue title for PR title + " (Agent)"
+                        # And link the issue in the body
+                        pr_body = f"Agent completed work for #{number}. Closes #{number}.\n\n/gemini review"
+                        pr_create_out = run_gh_command([
+                            'pr', 'create', 
+                            '--title', f"{title} (Agent)", 
+                            '--body', pr_body,
+                            '--head', current_branch,
+                            '--base', 'main', # or develop, ideally configurable
+                            '--repo', GITHUB_REPO
+                        ])
+                        # pr create output is the URL
+                        pr_url = pr_create_out.strip()
+                        logger.info(f"PR Created: {pr_url}")
+                        
+                    # Comment on the issue
+                    if pr_url:
+                        run_gh_command([
+                            'issue', 'comment', str(number), 
+                            '--repo', GITHUB_REPO, 
+                            '--body', f"🚀 Agent finished! created/updated PR: {pr_url}"
+                        ])
+                        
+            except Exception as pp_e:
+                logger.error(f"Post-processing failed (Push/PR): {pp_e}")
+                
+            # Even if push/pr fails, we mark as done because the agent did the code work? 
+            # Or should we keep it as WIP? Let's mark Done for now, but logs show error.
             update_labels(number, add_labels=[DONE_LABEL], remove_labels=[WIP_LABEL])
-            # Optional: Add comment
-            # run_gh_command(['issue', 'comment', str(number), '--repo', GITHUB_REPO, '--body', f"Agent finished successfully in {duration:.2f}s."])
         else:
             logger.error(f"Agent failed with exit code {return_code}")
             update_labels(number, add_labels=[ERROR_LABEL], remove_labels=[WIP_LABEL])

@@ -54,6 +54,8 @@ This bundle provides a standalone setup for turning a Debian 13 laptop into an a
    - `AGENT_COMMAND`: The command to run your agent.
      - Example: `gemini --yolo "Fix the issue in @CURRENT_ISSUE.md. Read @GEMINI.md. Strict Branching Policy."`
    - **`GEMINI_API_KEY`**: Set your Google Gemini API key here.
+   - **`BRANCH_NAME_TEMPLATE`**: formatting for branch names (default: `feat/issue-{number}-{safe_title}`).
+     - Note: Issues titled "Phase X..." will strictly follow `feat/phaseX-{name}` convention.
 
 4. **Authenticate GitHub CLI**:
    The agent runs as the user who installed it (or the sudo caller). Authenticate `gh` for that user:
