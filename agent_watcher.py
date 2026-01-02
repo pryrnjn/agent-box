@@ -223,6 +223,39 @@ def process_issue(issue):
 
 import sys
 
+def ensure_labels():
+    """Ensure that the necessary labels exist in the repository."""
+    labels = {
+        WIP_LABEL: {'color': 'D93F0B', 'description': 'Agent is currently working on this issue'},
+        DONE_LABEL: {'color': '0E8A16', 'description': 'Agent has completed this issue'},
+        ERROR_LABEL: {'color': 'B60205', 'description': 'Agent failed to complete this issue'}
+    }
+    
+    logger.info("Ensuring status labels exist...")
+    for label, meta in labels.items():
+        try:
+            # Check if label exists
+            # gh label list --search "name" returns matches. 
+            # If strictly checking, we can try to create and catch error, or list.
+            # Simple approach: try create, if "already exists" error, ignore.
+            
+            # Note: gh label create fails if it exists.
+            # We use subprocess directly to suppress stderr if it exists, or just catch.
+            cmd = ['gh', 'label', 'create', label, '--repo', GITHUB_REPO, 
+                   '--color', meta['color'], '--description', meta['description']]
+            
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            
+            if result.returncode == 0:
+                logger.info(f"Created label: {label}")
+            elif "already exists" in result.stderr:
+                logger.debug(f"Label {label} already exists.")
+            else:
+                logger.warning(f"Could not create label {label}: {result.stderr.strip()}")
+                
+        except Exception as e:
+            logger.error(f"Error checking/creating label {label}: {e}")
+
 def main():
     try:
         if not GITHUB_REPO:
@@ -234,6 +267,10 @@ def main():
             return
 
         logger.info(f"Agent Watcher Started for {GITHUB_REPO}")
+        
+        # Ensure labels exist before starting polling
+        ensure_labels()
+        
         logger.info(f"Polling every {POLL_INTERVAL} seconds for issues assigned to '{GITHUB_USER}'")
         
         # Ensure initial logs are flushed to systemd journal
