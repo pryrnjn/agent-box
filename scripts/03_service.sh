@@ -16,17 +16,39 @@ ROOT_DIR=$(dirname "$SCRIPT_DIR")
 log_info "Copying agent_watcher.py from $ROOT_DIR..."
 cp "$ROOT_DIR/agent_watcher.py" "$INSTALL_DIR/"
 
-# Setup Config if missing
+# Determine Source Config
+SOURCE_CONFIG=""
+if [ -f "$ROOT_DIR/.env" ]; then
+    log_info "Found local .env in source directory."
+    SOURCE_CONFIG="$ROOT_DIR/.env"
+elif [ -f "$ROOT_DIR/config.template.env" ]; then
+    log_info "Found config.template.env in source directory."
+    SOURCE_CONFIG="$ROOT_DIR/config.template.env"
+fi
+
+# Setup Config
 if [ ! -f "$INSTALL_DIR/.env" ]; then
-    if [ -f "$ROOT_DIR/config.template.env" ]; then
-        cp "$ROOT_DIR/config.template.env" "$INSTALL_DIR/.env"
-        log_info "Created default config at $INSTALL_DIR/.env from template."
+    if [ -n "$SOURCE_CONFIG" ]; then
+        cp "$SOURCE_CONFIG" "$INSTALL_DIR/.env"
+        log_info "Copied config to $INSTALL_DIR/.env"
     else
         log_info "Creating empty .env file..."
         touch "$INSTALL_DIR/.env"
     fi
 else
-    log_info "Config file already exists at $INSTALL_DIR/.env. Skipping overwrite."
+    # Config exists. Check if it's unconfigured.
+    if ! grep -q "GITHUB_REPO=\"owner/repo\"" "$INSTALL_DIR/.env" && grep -q "GITHUB_REPO=" "$INSTALL_DIR/.env"; then
+        log_info "Config file exists at $INSTALL_DIR/.env and appears configured."
+    else
+        # It seems unconfigured or default. If we have a better source, overwrite?
+        # Actually, if the user provided a specific .env in the bundle, they likely want to use it.
+        if [ -f "$ROOT_DIR/.env" ]; then
+            log_info "Overwriting existing config with local .env found in bundle..."
+            cp "$ROOT_DIR/.env" "$INSTALL_DIR/.env"
+        else
+            log_info "Config exists. Keeping it."
+        fi
+    fi
 fi
 
 log_info "Setting permissions for user $USER_NAME..."

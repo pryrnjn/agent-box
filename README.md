@@ -33,7 +33,7 @@ This bundle provides a standalone setup for turning a Debian 13 laptop into an a
    - Install system dependencies (Python, Node, Git, Build-essential).
    - Install GitHub CLI (`gh`).
    - Download and install **Antigravity CLI** to `/usr/local/bin`.
-   - Create a dedicated directory at `/opt/agent-box`.
+   - Create a dedicated directory at `~/agent-box` (configurable).
    - Enable the `agent-watcher` systemd service.
    - Attempt to clone the repository (if authenticated).
 
@@ -43,9 +43,9 @@ This bundle provides a standalone setup for turning a Debian 13 laptop into an a
    - *After auth, you can re-run `./setup.sh` to clone the repo automatically if it failed previously.*
 
 4. **Configure the Agent**:
-   Edit the configuration file generated at `/opt/agent-box/.env`:
+   Edit the configuration file generated at `~/agent-box/.env`:
    ```bash
-   nano /opt/agent-box/.env
+   nano ~/agent-box/.env
    ```
    **Crucial Settings**:
    - `GITHUB_REPO`: The `owner/repo` you want to monitor.
@@ -75,6 +75,22 @@ This bundle provides a standalone setup for turning a Debian 13 laptop into an a
    ```bash
    journalctl -u agent-watcher.service -f
    ```
+
+## Logging & Troubleshooting
+
+### Watcher Logs
+The watcher service logs its activity (polling, triggering) to two places:
+1.  **Live System Logs**:
+    ```bash
+    journalctl -u agent-watcher -f
+    ```
+2.  **Log File**:
+    Located at `~/agent-box/agent_watcher.log`.
+
+### Agent (Antigravity) Logs
+The output from the agent (Antigravity CLI) is captured by the system service.
+-   **Standard Output/Error**: Visible in the `journalctl` stream above when the agent is running.
+-   **Internal Logs**: Antigravity may store its own debug logs in `~/.antigravity/logs/` or `~/.config/antigravity/` (depending on the tool's version).
 
 ## Idempotency
 You can re-run `./setup.sh` at any time to update dependencies or reset the agent scripts. It will preserve your `.env` config.

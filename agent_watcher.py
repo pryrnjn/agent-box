@@ -7,9 +7,19 @@ import shlex
 from pathlib import Path
 from dotenv import load_dotenv
 
+# Load environment variables
+load_dotenv()
+
 # Setup logging
+# Setup logging
+LOG_LEVEL_STR = os.getenv('LOG_LEVEL', 'INFO').upper()
+LOG_LEVEL = getattr(logging, LOG_LEVEL_STR, logging.INFO)
+
+# Force print to catch configuration issues early (visible in journalctl)
+print(f"DEBUG: Starting Agent Watcher. Detected LOG_LEVEL={LOG_LEVEL_STR} (Numeric: {LOG_LEVEL})")
+
 logging.basicConfig(
-    level=logging.INFO,
+    level=LOG_LEVEL,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
         logging.StreamHandler(),
@@ -17,9 +27,7 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
-
-# Load environment variables
-load_dotenv()
+logger.setLevel(LOG_LEVEL) # Explicitly set level to ensure it takes effect
 
 # Configuration
 GITHUB_REPO = os.getenv('GITHUB_REPO')
@@ -177,11 +185,14 @@ def main():
     
     while True:
         try:
+            logger.info(f"Polling {GITHUB_REPO} for changes... (Time: {time.strftime('%H:%M:%S')})")
             issues = get_pending_issues()
             if issues:
                 for issue in issues:
                     process_issue(issue)
             else:
+                # debug is sufficient here if we logged "Polling" above, 
+                # but user wanted "every iteration" visibility.
                 logger.debug("No pending issues.")
         except KeyboardInterrupt:
             logger.info("Stopping watcher...")

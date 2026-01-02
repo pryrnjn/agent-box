@@ -16,7 +16,7 @@ log_info "Installing core apt dependencies (git, python, etc)..."
 apt-get install -y -qq \
     git curl wget jq build-essential \
     python3 python3-pip python3-venv \
-    software-properties-common unzip
+    unzip gnupg
 log_success "Core apt dependencies installed."
 
 # Install GitHub CLI

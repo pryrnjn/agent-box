@@ -14,59 +14,33 @@ if command -v antigravity &> /dev/null; then
     exit 0
 fi
 
-log_info "Downloading Antigravity CLI from $DOWNLOAD_URL..."
-wget -q --show-progress -O "$TARGET_FILE" "$DOWNLOAD_URL"
-log_info "Download complete. Size: $(du -h "$TARGET_FILE" | cut -f1)"
+log_info "Setting up Antigravity APT repository..."
 
-# Check if it is a binary or an archive
-FILE_TYPE=$(file "$TARGET_FILE")
-log_info "Detected file type: $FILE_TYPE"
+# 1. Add GPG Key
+log_info "Adding GPG key..."
+mkdir -p -m 755 /etc/apt/keyrings
+curl -fsSL https://us-central1-apt.pkg.dev/doc/repo-signing-key.gpg | \
+  gpg --dearmor --yes -o /etc/apt/keyrings/antigravity-repo-key.gpg
+chmod go+r /etc/apt/keyrings/antigravity-repo-key.gpg
 
-if [[ "$FILE_TYPE" == *"executable"* || "$FILE_TYPE" == *"ELF"* ]]; then
-    # It's a binary
-    log_info "Installing binary directly..."
-    mv "$TARGET_FILE" "$BIN_DIR/antigravity"
-    chmod +x "$BIN_DIR/antigravity"
-    log_success "Installed Antigravity binary to $BIN_DIR/antigravity"
+# 2. Add Sources List
+log_info "Adding source list..."
+echo "deb [signed-by=/etc/apt/keyrings/antigravity-repo-key.gpg] https://us-central1-apt.pkg.dev/projects/antigravity-auto-updater-dev/ antigravity-debian main" | \
+  tee /etc/apt/sources.list.d/antigravity.list > /dev/null
 
-elif [[ "$FILE_TYPE" == *"Zip archive"* ]]; then
-    # It's a zip
-    log_info "Unzipping archive..."
-    unzip -q "$TARGET_FILE" -d "$TEMP_DIR"
-    # Find the binary inside
-    BINARY=$(find "$TEMP_DIR" -type f -name "antigravity" | head -n 1)
-    if [ -n "$BINARY" ]; then
-        log_info "Found binary at $BINARY. Moving to installation path..."
-        mv "$BINARY" "$BIN_DIR/antigravity"
-        chmod +x "$BIN_DIR/antigravity"
-        log_success "Unzipped and installed Antigravity binary."
-    else
-        log_error "Could not find 'antigravity' binary in the downloaded zip."
-        exit 1
-    fi
+# 3. Update Cache
+log_info "Updating apt cache..."
+apt-get update -qq
 
-elif [[ "$FILE_TYPE" == *"gzip compressed data"* ]]; then
-     # It's a tarball
-    log_info "Extracting tarball..."
-    tar -xzf "$TARGET_FILE" -C "$TEMP_DIR"
-    BINARY=$(find "$TEMP_DIR" -type f -name "antigravity" | head -n 1)
-    if [ -n "$BINARY" ]; then
-        log_info "Found binary at $BINARY. Moving to installation path..."
-        mv "$BINARY" "$BIN_DIR/antigravity"
-        chmod +x "$BIN_DIR/antigravity"
-        log_success "Extracted and installed Antigravity binary."
-    else
-        log_error "Could not find 'antigravity' binary in the downloaded tarball."
-        exit 1
-    fi
+# 4. Install Package
+log_info "Installing antigravity package..."
+apt-get install -y -qq antigravity
+
+if command -v antigravity &> /dev/null; then
+    log_success "Antigravity setup complete."
+    log_info "Version: $(antigravity --version || echo 'Unknown')"
+    log_info "Usage: Please run 'antigravity login' manually to authenticate."
 else
-    # Fallback: Just assume it's the binary if we can't detect
-    log_info "Unknown file type: $FILE_TYPE. Assuming executable binary."
-    mv "$TARGET_FILE" "$BIN_DIR/antigravity"
-    chmod +x "$BIN_DIR/antigravity"
+    log_error "Installation failed: 'antigravity' command not found."
+    exit 1
 fi
-
-rm -rf "$TEMP_DIR"
-
-log_success "Antigravity setup complete."
-log_info "You may need to authenticate later using: antigravity login"
