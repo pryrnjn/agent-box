@@ -31,6 +31,7 @@ logger.setLevel(LOG_LEVEL) # Explicitly set level to ensure it takes effect
 
 # Configuration
 GITHUB_REPO = os.getenv('GITHUB_REPO')
+GITHUB_USER = os.getenv('GITHUB_USER')
 POLL_INTERVAL = int(os.getenv('POLL_INTERVAL', 60))
 TRIGGER_LABEL = os.getenv('TRIGGER_LABEL', 'status:pending-agent')
 WIP_LABEL = os.getenv('WIP_LABEL', 'status:agent-working')
@@ -59,19 +60,63 @@ def run_gh_command(args):
 def get_pending_issues():
     """Fetch issues with the trigger label."""
     try:
-        logger.debug(f"Checking for issues in {GITHUB_REPO} with label '{TRIGGER_LABEL}'...")
+        query = f"assignee:{GITHUB_USER} is:open -label:\"{WIP_LABEL}\" -label:\"{DONE_LABEL}\" -label:\"{ERROR_LABEL}\""
+        logger.debug(f"Checking for issues with query: '{query}'...")
+        
+        # We need to use --search for complex filtering (assignee + exclusions)
+        # Note: --search implies --repo is scoped if run inside repo, but we should be explicit if possible.
+        # However, `gh issue list --search` works within the current repo context or global.
+        # Currently we run `gh` which might be global. `gh issue list` accepts `--repo`.
+        # When using `--search`, `gh` behaves like `gh search issues` scoped to the repo if `--repo` is passed?
+        # Actually `gh issue list` has a `--search` flag that allows filtering the list.
+        
         output = run_gh_command([
             'issue', 'list',
             '--repo', GITHUB_REPO,
-            '--label', TRIGGER_LABEL,
-            '--state', 'open',
-            '--json', 'number,url,title',
-            '--limit', '1' # Process one at a time
+            '--search', query,
+            '--json', 'number,url,title,body', # Fetch body for dependency check
+            '--limit', '5' # Fetch more candidates in case some are blocked
         ])
         return json.loads(output)
     except Exception as e:
         logger.error(f"Failed to fetch issues: {e}")
         return []
+
+import re
+
+def check_dependencies(issue):
+    """Check if all dependencies are resolved."""
+    body = issue.get('body', '')
+    if not body:
+        return True
+    
+    # Look for "Depends on #123" or "Blocked by #123"
+    # Supported formats: "Depends on #123", "depends on #123", "Blocked by #123"
+    matches = re.findall(r'(?:[Dd]epends on|[Bb]locked by) #(\d+)', body)
+    
+    if not matches:
+        return True
+
+    logger.info(f"Issue #{issue['number']} has dependencies: {matches}")
+    
+    for dep_num in matches:
+        try:
+            # Check status of dependency
+            # We use `gh issue view` to get state
+            output = run_gh_command(['issue', 'view', dep_num, '--repo', GITHUB_REPO, '--json', 'state'])
+            dep_data = json.loads(output)
+            state = dep_data.get('state')
+            
+            if state != 'closed':
+                logger.info(f"Skipping Issue #{issue['number']}: Dependency #{dep_num} is {state} (not closed).")
+                return False
+        except Exception as e:
+            logger.error(f"Failed to check dependency #{dep_num}: {e}")
+            # If we can't verify, err on side of caution? Or assume blocked?
+            # Let's assume blocked to prevent acting on partial info
+            return False
+            
+    return True
 
 def update_labels(issue_number, add_labels=None, remove_labels=None):
     """Update labels on an issue."""
@@ -129,7 +174,8 @@ def process_issue(issue):
     logger.info(f"Processing Issue #{number}: {title}")
     
     # 1. Mark as WIP
-    update_labels(number, add_labels=[WIP_LABEL], remove_labels=[TRIGGER_LABEL])
+    # We trigger on assignment, so we just add the WIP label to filter it out from next search
+    update_labels(number, add_labels=[WIP_LABEL])
     
     # 2. Prepare Workspace
     try:
@@ -175,32 +221,56 @@ def process_issue(issue):
         logger.error(f"Exception during agent execution: {e}")
         update_labels(number, add_labels=[ERROR_LABEL], remove_labels=[WIP_LABEL])
 
-def main():
-    if not GITHUB_REPO:
-        logger.error("GITHUB_REPO not defined in config. Exiting.")
-        return
+import sys
 
-    logger.info(f"Agent Watcher Started for {GITHUB_REPO}")
-    logger.info(f"Polling every {POLL_INTERVAL} seconds for label '{TRIGGER_LABEL}'")
-    
-    while True:
-        try:
-            logger.info(f"Polling {GITHUB_REPO} for changes... (Time: {time.strftime('%H:%M:%S')})")
-            issues = get_pending_issues()
-            if issues:
-                for issue in issues:
-                    process_issue(issue)
-            else:
-                # debug is sufficient here if we logged "Polling" above, 
-                # but user wanted "every iteration" visibility.
-                logger.debug("No pending issues.")
-        except KeyboardInterrupt:
-            logger.info("Stopping watcher...")
-            break
-        except Exception as e:
-            logger.error(f"Unexpected error in main loop: {e}")
+def main():
+    try:
+        if not GITHUB_REPO:
+            logger.error("GITHUB_REPO not defined in config. Exiting.")
+            return
         
-        time.sleep(POLL_INTERVAL)
+        if not GITHUB_USER:
+            logger.error("GITHUB_USER not defined in config. Exiting.")
+            return
+
+        logger.info(f"Agent Watcher Started for {GITHUB_REPO}")
+        logger.info(f"Polling every {POLL_INTERVAL} seconds for issues assigned to '{GITHUB_USER}'")
+        
+        # Ensure initial logs are flushed to systemd journal
+        for handler in logger.handlers:
+            handler.flush()
+        
+        while True:
+            try:
+                logger.info(f"Polling {GITHUB_REPO} for changes... (Time: {time.strftime('%H:%M:%S')})")
+                issues = get_pending_issues()
+                if issues:
+                    processed_any = False
+                    for issue in issues:
+                        if check_dependencies(issue):
+                            process_issue(issue)
+                            processed_any = True
+                            break # Process only one at a time for now
+                    
+                    if not processed_any:
+                        logger.info("Found assigned issues, but all are blocked by dependencies.")
+                else:
+                    logger.debug("No pending issues.")
+            except KeyboardInterrupt:
+                logger.info("Stopping watcher...")
+                break
+            except Exception as e:
+                logger.error(f"Unexpected error in main loop: {e}")
+            
+            time.sleep(POLL_INTERVAL)
+            
+    except Exception as fatal_error:
+        # This catches errors during startup (e.g. before the loop)
+        logger.critical(f"FATAL ERROR in Agent Watcher: {fatal_error}", exc_info=True)
+        # Flush to ensure we see it
+        for handler in logger.handlers:
+            handler.flush()
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()

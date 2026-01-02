@@ -49,10 +49,9 @@ This bundle provides a standalone setup for turning a Debian 13 laptop into an a
    ```
    **Crucial Settings**:
    - `GITHUB_REPO`: The `owner/repo` you want to monitor.
+   - `GITHUB_USER`: The bot username (must match the assignee).
    - `GIT_NAME` / `GIT_EMAIL`: Identity for agent commits.
    - `AGENT_COMMAND`: The command to run your agent.
-     - Example: `antigravity run --issue {issue_url}`
-   - `TRIGGER_LABEL`: The label that triggers the agent (default: `status:pending-agent`).
 
 4. **Authenticate GitHub CLI**:
    The agent runs as the user who installed it (or the sudo caller). Authenticate `gh` for that user:
@@ -69,8 +68,8 @@ This bundle provides a standalone setup for turning a Debian 13 laptop into an a
 ## Usage
 
 1. Create an issue in your repository.
-2. Add the label `status:pending-agent` (or whatever you configured).
-3. The Agent Box will pick it up within 60 seconds (polled).
+2. **Assign the issue** to the bot user (e.g., `pr-gemini`).
+3. The Agent Box will pick it up (searching for assigned issues without WIP labels).
 4. You can follow the logs:
    ```bash
    journalctl -u agent-watcher.service -f
