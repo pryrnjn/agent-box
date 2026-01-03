@@ -13,33 +13,31 @@ if [ -z "$BASH_VERSION" ]; then
     exit 1
 fi
 
-echo -e "${GREEN}=== Starting Agent Box Setup ===${NC}"
+# Source common to get INSTALL_DIR and log utils
+# We need to source this earlier for logging, but we need SCRIPT_DIR first
+source "$SCRIPTS_SUBDIR/00_common.sh"
 
-SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
-SCRIPTS_SUBDIR="$SCRIPT_DIR/scripts"
+echo -e "${GREEN}=== Starting Agent Box Setup ===${NC}"
 
 # Make sure scripts are executable
 chmod +x "$SCRIPTS_SUBDIR"/*.sh
 
 # Run steps
-echo -e "${GREEN}Step 1: Base Dependencies${NC}"
+log_info "Step 1: Base Dependencies"
 "$SCRIPTS_SUBDIR/01_base_deps.sh"
 
-echo -e "${GREEN}Step 2: Installing Gemini CLI${NC}"
+log_info "Step 2: Installing Gemini CLI"
 "$SCRIPTS_SUBDIR/02_gemini_cli.sh"
 
-echo -e "${GREEN}Step 3: Deployment & Environment${NC}"
+log_info "Step 3: Deployment & Environment"
 "$SCRIPTS_SUBDIR/03_deploy.sh"
 
-echo -e "${GREEN}Step 4: Service Setup${NC}"
+log_info "Step 4: Service Setup"
 "$SCRIPTS_SUBDIR/04_service.sh"
 
-echo -e "${GREEN}Step 5: Repository Setup (Target)${NC}"
+log_info "Step 5: Repository Setup (Target)"
 "$SCRIPTS_SUBDIR/05_repo_setup.sh"
 
-# Source common to get INSTALL_DIR
-source "$SCRIPTS_SUBDIR/00_common.sh"
-
-echo -e "${GREEN}=== Setup Complete! ===${NC}"
-echo "Please configure your environment: nano $INSTALL_DIR/.env"
-echo "Then start the service: systemctl start agent-watcher.service"
+log_success "=== Setup Complete! ==="
+log_info "Please configure your environment: nano $INSTALL_DIR/.env"
+log_info "Then start the service: ./start.sh OR systemctl start agent-watcher.service"
