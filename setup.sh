@@ -13,8 +13,11 @@ if [ -z "$BASH_VERSION" ]; then
     exit 1
 fi
 
+# Define script directory paths
+SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
+SCRIPTS_SUBDIR="$SCRIPT_DIR/scripts"
+
 # Source common to get INSTALL_DIR and log utils
-# We need to source this earlier for logging, but we need SCRIPT_DIR first
 source "$SCRIPTS_SUBDIR/00_common.sh"
 
 echo -e "${GREEN}=== Starting Agent Box Setup ===${NC}"

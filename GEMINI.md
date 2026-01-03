@@ -31,14 +31,23 @@ This document provides guidelines for AI agents working on the `agent-box-setup`
 ```
 agent-box-setup/
 ├── setup.sh                 # Entry point (orchestrator)
-├── agent_watcher.py         # The Python service daemon
+├── start.sh                 # Start service & tail logs
+├── stop.sh                  # Stop service
+├── agent_watcher.py         # Service entry point
+├── watcher/                 # Modular Python Package
+│   ├── config.py            # Configuration
+│   ├── models.py            # Data Models
+│   ├── github.py            # GitHub API Interaction
+│   ├── git.py               # Git Operations
+│   └── workflow.py          # Workflow Orchestration
 ├── config.template.env      # Template configuration
 ├── scripts/                 # Modular setup steps
 │   ├── 00_common.sh         # Shared vars/logging
 │   ├── 01_base_deps.sh      # Apt packages
 │   ├── 02_gemini_cli.sh     # NPM/Gemini CLI
-│   ├── 03_service.sh        # Systemd unit creation
-│   └── 04_repo_setup.sh     # Git repo initialization (Target Repo)
+│   ├── 03_deploy.sh         # Deployment (Copy/Pip Install)
+│   ├── 04_service.sh        # Systemd Configuration
+│   └── 05_repo_setup.sh     # Git repo initialization (Target Repo)
 └── GEMINI.md                # This file
 ```
 
@@ -46,10 +55,10 @@ agent-box-setup/
 
 ## 🔄 Development Workflow
 
-1.  **Make Changes**: Edit scripts or python code.
+1.  **Make Changes**: Edit `scripts/` or `watcher/` python code.
 2.  **Test Deployment**: Run `./setup.sh` locally (or on a test VM).
-3.  **Verify Service**: `systemctl status agent-watcher`.
-4.  **Verify Logs**: `journalctl -u agent-watcher -f`.
+3.  **Run Service**: `./start.sh` (Starts service + tails logs).
+4.  **Verify Status**: `systemctl status agent-watcher`.
 
 ---
 
@@ -57,5 +66,5 @@ agent-box-setup/
 
 The `agent-watcher` has a self-update loop:
 1.  It runs from a git clone of this repository (`~/agent-box`).
-2.  Periodically checks for updates on the `main` branch.
+2.  Periodically checks for updates on the `main` branch (configurable via `SELF_UPDATE_INTERVAL`).
 3.  If updates found: `git pull` -> `systemctl restart agent-watcher`.
