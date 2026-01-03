@@ -4,17 +4,51 @@ set -e
 # Source common functions
 SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
 source "$SCRIPT_DIR/00_common.sh"
-source "$SCRIPT_DIR/../../config.template.env" 2>/dev/null || true
+source "$SCRIPT_DIR/../config.template.env" 2>/dev/null || true
 
 check_root
 
 log_info "Preparing installation directory at $INSTALL_DIR..."
 mkdir -p "$INSTALL_DIR"
 
-# Copy python script
+# --- Installation Method: Git Clone (preferred) or Copy ---
 ROOT_DIR=$(dirname "$SCRIPT_DIR")
-log_info "Copying agent_watcher.py from $ROOT_DIR..."
-cp "$ROOT_DIR/agent_watcher.py" "$INSTALL_DIR/"
+REMOTE_URL=$(git -C "$ROOT_DIR" config --get remote.origin.url || true)
+
+if [ -n "$REMOTE_URL" ]; then
+    log_info "Detected git repository source: $REMOTE_URL"
+    log_info "Setting up $INSTALL_DIR as a git clone..."
+    
+    if [ -d "$INSTALL_DIR/.git" ]; then
+        log_info "Updating existing repository at $INSTALL_DIR..."
+        # We need to run git as the owner user, not root, to avoid permission issues?
+        # But we are root now. We can sudo -u.
+        sudo -u "$USER_NAME" git -C "$INSTALL_DIR" fetch origin
+        sudo -u "$USER_NAME" git -C "$INSTALL_DIR" reset --hard origin/main
+    else
+        # Remove dir if it exists but isn't git (and not empty?)
+        # Safe approach: just clone into empty dir.
+        # If dir exists and not empty, git clone fails.
+        if [ -d "$INSTALL_DIR" ] && [ "$(ls -A $INSTALL_DIR)" ]; then
+            log_warning "$INSTALL_DIR exists and is not empty. Backing up..."
+            mv "$INSTALL_DIR" "${INSTALL_DIR}.bak.$(date +%s)"
+            mkdir -p "$INSTALL_DIR"
+        fi
+        
+        # Ensure parent dir exists
+        mkdir -p "$(dirname "$INSTALL_DIR")"
+        chown "$USER_NAME:$USER_NAME" "$(dirname "$INSTALL_DIR")"
+        
+        log_info "Cloning..."
+        sudo -u "$USER_NAME" git clone "$REMOTE_URL" "$INSTALL_DIR"
+    fi
+else
+    log_warning "Not running from a git repository. Fallback to file copy."
+    log_warning "AUTO-UPDATE WILL BE DISABLED."
+    mkdir -p "$INSTALL_DIR"
+    cp "$ROOT_DIR/agent_watcher.py" "$INSTALL_DIR/"
+    cp -r "$ROOT_DIR/scripts" "$INSTALL_DIR/" # Copy scripts too just in case
+fi
 
 # Determine Source Config
 SOURCE_CONFIG=""

@@ -521,6 +521,29 @@ def ensure_labels():
         except Exception as e:
             logger.error(f"Error checking/creating label {label}: {e}")
 
+def check_self_update():
+    """Check for updates to the agent watcher itself."""
+    try:
+        # Check if we are in a git repo
+        if not os.path.isdir('.git'):
+            return
+            
+        logger.debug("Checking for self-updates...")
+        subprocess.run(['git', 'fetch', 'origin'], check=True, capture_output=True)
+        
+        # Check if behind
+        status = subprocess.run(['git', 'status', '-uno'], capture_output=True, text=True)
+        if "Your branch is behind" in status.stdout:
+            logger.info("New version detected! Updating...")
+            subprocess.run(['git', 'pull'], check=True)
+            
+            logger.info("Update complete. Restarting service in 5 seconds...")
+            time.sleep(5)
+            sys.exit(0) # Systemd will restart us
+            
+    except Exception as e:
+        logger.error(f"Self-update check failed: {e}")
+
 def main():
     try:
         if not GITHUB_REPO:
@@ -542,8 +565,15 @@ def main():
         for handler in logger.handlers:
             handler.flush()
         
+        loop_count = 0
         while True:
             try:
+                loop_count += 1
+                
+                # Check for self-update every ~1 hour (assuming 60s poll)
+                if loop_count % 60 == 0:
+                    check_self_update()
+                    
                 logger.info(f"Polling {GITHUB_REPO} for changes... (Time: {time.strftime('%H:%M:%S')})")
                 issues = get_pending_issues()
                 if issues:
