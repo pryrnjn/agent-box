@@ -15,6 +15,23 @@ class Git:
         """Run a git command in the specified directory."""
         subprocess.run(['git'] + args, cwd=cwd, check=True)
 
+    @staticmethod
+    def commit_all_changes(repo_path: str, message: str):
+        """Stage and commit all changes."""
+        try:
+            subprocess.run(['git', 'add', '.'], cwd=repo_path, check=True)
+            # Check if there are changes to commit
+            status = subprocess.run(['git', 'status', '--porcelain'], cwd=repo_path, capture_output=True, text=True)
+            if not status.stdout.strip():
+                logger.info("No changes to commit.")
+                return
+
+            subprocess.run(['git', 'commit', '-m', message], cwd=repo_path, check=True)
+            logger.info("Changes committed successfully.")
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Failed to commit changes: {e}")
+            raise
+
     @classmethod
     def generate_branch_name(cls, number: int, title: str) -> str:
         """Generate a branch name based on conventions."""

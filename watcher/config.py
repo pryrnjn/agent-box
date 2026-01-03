@@ -22,6 +22,9 @@ class Config:
     AGENT_COMMAND_TEMPLATE = os.getenv('AGENT_COMMAND')
     AGENT_REVIEW_COMMAND_TEMPLATE = os.getenv('AGENT_REVIEW_COMMAND')
     
+    # Prompt additions
+    GIT_COMMIT_INSTRUCTION = " When done, git commit your changes with a descriptive message."
+    
     # Workspaces
     WORK_DIR_BASE = os.getenv('WORK_DIR_BASE', 'workspace')
     BRANCH_NAME_TEMPLATE = os.getenv('BRANCH_NAME_TEMPLATE', 'feat/issue-{number}-{safe_title}')
