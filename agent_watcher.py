@@ -140,6 +140,35 @@ def check_dependencies(issue):
             
     return True
 
+    return True
+
+def find_active_branch(issue_number):
+    """Check if there's already an open PR for this issue and return its branch."""
+    try:
+        # Search for PRs referencing this issue number in title or body
+        # We assume the user or agent puts (#123) in the PR title or body
+        query = f"{issue_number} in:title,body"
+        output = run_gh_command([
+            'pr', 'list', '--repo', GITHUB_REPO, 
+            '--search', query,
+            '--state', 'open',
+            '--json', 'headRefName,number,updatedAt',
+            '--limit', '5'
+        ])
+        prs = json.loads(output)
+        
+        if prs:
+            # Sort by updatedAt desc to get the most recent one
+            prs.sort(key=lambda x: x['updatedAt'], reverse=True)
+            target_branch = prs[0]['headRefName']
+            logger.info(f"Found existing active PR #{prs[0]['number']} on branch '{target_branch}'")
+            return target_branch
+            
+    except Exception as e:
+        logger.warning(f"Failed to check for active branch: {e}")
+        
+    return None
+
 def update_labels(issue_number, add_labels=None, remove_labels=None):
     """Update labels on an issue."""
     args = ['issue', 'edit', str(issue_number), '--repo', GITHUB_REPO]
@@ -219,8 +248,15 @@ def prepare_workspace(issue):
     subprocess.run(['git', 'fetch', '--all'], cwd=repo_path, check=True)
     
     # 2. Determine target branch
-    target_branch = generate_branch_name(number, title)
-    logger.info(f"Target Branch: {target_branch}")
+    # First, check if there is an existing PR/branch for this issue
+    branch_name = find_active_branch(number)
+    
+    if branch_name:
+        target_branch = branch_name
+        logger.info(f"Using existing active branch: {target_branch}")
+    else:
+        target_branch = generate_branch_name(number, title)
+        logger.info(f"No active PR found. Generated Target Branch: {target_branch}")
     
     # 3. Check if remote branch exists
     # git ls-remote --heads origin branch_name
@@ -252,7 +288,9 @@ def prepare_workspace(issue):
             
             # Push immediately to establish upstream? Maybe wait for first commit.
 
-    return str(repo_path)
+            # Push immediately to establish upstream? Maybe wait for first commit.
+ 
+    return str(repo_path), target_branch
 
 PR_BASE_BRANCH = os.getenv('PR_BASE_BRANCH', 'develop')
 
@@ -351,7 +389,7 @@ def process_issue(issue):
     
     # 2. Prepare Workspace
     try:
-        workspace_dir = prepare_workspace(issue)
+        workspace_dir, valid_branch = prepare_workspace(issue)
         
         # Write issue context
         issue_file = Path(workspace_dir) / "CURRENT_ISSUE.md"
@@ -362,9 +400,8 @@ def process_issue(issue):
             f.write(issue.get('body', ''))
         
         # Fetch and write PR context (Feedback Loop)
-        # We need the branch name again to find the PR
-        target_branch = generate_branch_name(number, title)
-        pr_context = fetch_pr_context(number, target_branch, workspace_dir)
+        # We use the branch that was actually checked out/found
+        pr_context = fetch_pr_context(number, valid_branch, workspace_dir)
         
         if pr_context:
             pr_file = Path(workspace_dir) / "PR_CONTEXT.md"
