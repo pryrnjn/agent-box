@@ -169,6 +169,18 @@ def find_active_branch(issue_number):
         
     return None
 
+def parse_branch_directive(issue_body):
+    """Parse 'Branch: <name>' directive from issue body."""
+    if not issue_body:
+        return None
+        
+    match = re.search(r'Branch:\s*([\w/-]+)', issue_body, re.IGNORECASE)
+    if match:
+        branch = match.group(1).strip()
+        logger.info(f"Found explicit branch directive: {branch}")
+        return branch
+    return None
+
 def update_labels(issue_number, add_labels=None, remove_labels=None):
     """Update labels on an issue."""
     args = ['issue', 'edit', str(issue_number), '--repo', GITHUB_REPO]
@@ -255,8 +267,14 @@ def prepare_workspace(issue):
         target_branch = branch_name
         logger.info(f"Using existing active branch: {target_branch}")
     else:
-        target_branch = generate_branch_name(number, title)
-        logger.info(f"No active PR found. Generated Target Branch: {target_branch}")
+        # Check for explicit directive in body
+        explicit_branch = parse_branch_directive(issue.get('body', ''))
+        if explicit_branch:
+             target_branch = explicit_branch
+             logger.info(f"Using explicit branch from body: {target_branch}")
+        else:
+             target_branch = generate_branch_name(number, title)
+             logger.info(f"No active PR or directive found. Generated Target Branch: {target_branch}")
     
     # 3. Check if remote branch exists
     # git ls-remote --heads origin branch_name
