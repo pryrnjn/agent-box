@@ -28,11 +28,14 @@ echo -e "${GREEN}Step 1: Base Dependencies${NC}"
 echo -e "${GREEN}Step 2: Installing Gemini CLI${NC}"
 "$SCRIPTS_SUBDIR/02_gemini_cli.sh"
 
-echo -e "${GREEN}Step 3: Service Setup${NC}"
-"$SCRIPTS_SUBDIR/03_service.sh"
+echo -e "${GREEN}Step 3: Deployment & Environment${NC}"
+"$SCRIPTS_SUBDIR/03_deploy.sh"
 
-echo -e "${GREEN}Step 4: Repository Setup${NC}"
-"$SCRIPTS_SUBDIR/04_repo_setup.sh"
+echo -e "${GREEN}Step 4: Service Setup${NC}"
+"$SCRIPTS_SUBDIR/04_service.sh"
+
+echo -e "${GREEN}Step 5: Repository Setup (Target)${NC}"
+"$SCRIPTS_SUBDIR/05_repo_setup.sh"
 
 # Source common to get INSTALL_DIR
 source "$SCRIPTS_SUBDIR/00_common.sh"

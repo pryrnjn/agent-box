@@ -21,21 +21,15 @@ if [ -n "$REMOTE_URL" ]; then
     
     if [ -d "$INSTALL_DIR/.git" ]; then
         log_info "Updating existing repository at $INSTALL_DIR..."
-        # We need to run git as the owner user, not root, to avoid permission issues?
-        # But we are root now. We can sudo -u.
         sudo -u "$USER_NAME" git -C "$INSTALL_DIR" fetch origin
         sudo -u "$USER_NAME" git -C "$INSTALL_DIR" reset --hard origin/main
     else
-        # Remove dir if it exists but isn't git (and not empty?)
-        # Safe approach: just clone into empty dir.
-        # If dir exists and not empty, git clone fails.
         if [ -d "$INSTALL_DIR" ] && [ "$(ls -A $INSTALL_DIR)" ]; then
             log_warning "$INSTALL_DIR exists and is not empty. Backing up..."
             mv "$INSTALL_DIR" "${INSTALL_DIR}.bak.$(date +%s)"
             mkdir -p "$INSTALL_DIR"
         fi
         
-        # Ensure parent dir exists
         mkdir -p "$(dirname "$INSTALL_DIR")"
         chown "$USER_NAME:$USER_NAME" "$(dirname "$INSTALL_DIR")"
         
@@ -47,7 +41,9 @@ else
     log_warning "AUTO-UPDATE WILL BE DISABLED."
     mkdir -p "$INSTALL_DIR"
     cp "$ROOT_DIR/agent_watcher.py" "$INSTALL_DIR/"
-    cp -r "$ROOT_DIR/scripts" "$INSTALL_DIR/" # Copy scripts too just in case
+    cp "$ROOT_DIR/requirements.txt" "$INSTALL_DIR/" 2>/dev/null || true
+    cp -r "$ROOT_DIR/watcher" "$INSTALL_DIR/"
+    cp -r "$ROOT_DIR/scripts" "$INSTALL_DIR/"
 fi
 
 # Determine Source Config
@@ -74,8 +70,6 @@ else
     if ! grep -q "GITHUB_REPO=\"owner/repo\"" "$INSTALL_DIR/.env" && grep -q "GITHUB_REPO=" "$INSTALL_DIR/.env"; then
         log_info "Config file exists at $INSTALL_DIR/.env and appears configured."
     else
-        # It seems unconfigured or default. If we have a better source, overwrite?
-        # Actually, if the user provided a specific .env in the bundle, they likely want to use it.
         if [ -f "$ROOT_DIR/.env" ]; then
             log_info "Overwriting existing config with local .env found in bundle..."
             cp "$ROOT_DIR/.env" "$INSTALL_DIR/.env"
@@ -99,55 +93,15 @@ else
     echo "venv exists."
 fi
 source venv/bin/activate
-echo "Installing python dependencies (requests, python-dotenv)..."
+echo "Installing python dependencies..."
 pip install --upgrade pip
-pip install requests python-dotenv
+
+if [ -f "requirements.txt" ]; then
+    echo "Installing from requirements.txt..."
+    pip install -r requirements.txt
+else
+    echo "requirements.txt not found. Installing default dependencies (python-dotenv)..."
+    pip install python-dotenv
+fi
 EOF
-log_success "Python environment ready."
-
-# Ensure Gemini directories exist for ReadWritePaths to work
-# Systemd fails with 226/NAMESPACE if a ReadWritePath path doesn't exist
-log_info "Ensuring Gemini config/cache directories exist..."
-sudo -u "$USER_NAME" mkdir -p "/home/$USER_NAME/.gemini" "/home/$USER_NAME/.config/gemini"
-
-# Systemd
-SERVICE_FILE="/etc/systemd/system/agent-watcher.service"
-log_info "Creating systemd unit file at $SERVICE_FILE..."
-cat > "$SERVICE_FILE" << EOF
-[Unit]
-Description=Agent Box Watcher Service
-After=network.target
-
-[Service]
-Type=simple
-User=$USER_NAME
-WorkingDirectory=$INSTALL_DIR
-EnvironmentFile=$INSTALL_DIR/.env
-ExecStart=$INSTALL_DIR/venv/bin/python3 $INSTALL_DIR/agent_watcher.py
-Restart=always
-RestartSec=60
-
-# --- Security Sandboxing ---
-# Prevent writing to system directories (only allow writing to install dir)
-ProtectSystem=strict
-# User home is read-only, BUT we explicitly whitelist correct paths
-ProtectHome=read-only
-# Whitelist Install Dir and Gemini Config Dir
-# Prefix with '-' to ignore if path doesn't exist (though we created them)
-ReadWritePaths=$INSTALL_DIR -/home/$USER_NAME/.gemini -/home/$USER_NAME/.config/gemini
-
-# Create a private /tmp for this service
-PrivateTmp=true
-# Prevent escalating privileges
-NoNewPrivileges=true
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-log_info "Reloading systemd daemon..."
-systemctl daemon-reload
-log_info "Enabling agent-watcher service..."
-systemctl enable agent-watcher.service
-
-log_success "Service 'agent-watcher' installed and enabled."
+log_success "Deployment and Python environment setup complete."
