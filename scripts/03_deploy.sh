@@ -13,37 +13,51 @@ mkdir -p "$INSTALL_DIR"
 
 # --- Installation Method: Git Clone (preferred) or Copy ---
 ROOT_DIR=$(dirname "$SCRIPT_DIR")
-REMOTE_URL=$(git -C "$ROOT_DIR" config --get remote.origin.url || true)
+# Resolve absolute paths for comparison
+ABS_ROOT=$(readlink -f "$ROOT_DIR")
+ABS_INSTALL=$(readlink -f "$INSTALL_DIR")
 
-if [ -n "$REMOTE_URL" ]; then
-    log_info "Detected git repository source: $REMOTE_URL"
-    log_info "Setting up $INSTALL_DIR as a git clone..."
-    
-    if [ -d "$INSTALL_DIR/.git" ]; then
-        log_info "Updating existing repository at $INSTALL_DIR..."
-        sudo -u "$USER_NAME" git -C "$INSTALL_DIR" fetch origin
-        sudo -u "$USER_NAME" git -C "$INSTALL_DIR" reset --hard origin/main
-    else
-        if [ -d "$INSTALL_DIR" ] && [ "$(ls -A $INSTALL_DIR)" ]; then
-            log_warning "$INSTALL_DIR exists and is not empty. Backing up..."
-            mv "$INSTALL_DIR" "${INSTALL_DIR}.bak.$(date +%s)"
-            mkdir -p "$INSTALL_DIR"
-        fi
-        
-        mkdir -p "$(dirname "$INSTALL_DIR")"
-        chown "$USER_NAME:$USER_NAME" "$(dirname "$INSTALL_DIR")"
-        
-        log_info "Cloning..."
-        sudo -u "$USER_NAME" git clone "$REMOTE_URL" "$INSTALL_DIR"
+if [ "$ABS_ROOT" == "$ABS_INSTALL" ]; then
+    log_info "Installing In-Place (Source matches Install Directory)."
+    log_info "Skipping git clone/reset to preserve local changes."
+    # We are already here, so code is present.
+    # Just ensure requirements are present if needed.
+    if [ ! -f "$INSTALL_DIR/requirements.txt" ] && [ -f "$ROOT_DIR/requirements.txt" ]; then
+        cp "$ROOT_DIR/requirements.txt" "$INSTALL_DIR/"
     fi
 else
-    log_warning "Not running from a git repository. Fallback to file copy."
-    log_warning "AUTO-UPDATE WILL BE DISABLED."
-    mkdir -p "$INSTALL_DIR"
-    cp "$ROOT_DIR/agent_watcher.py" "$INSTALL_DIR/"
-    cp "$ROOT_DIR/requirements.txt" "$INSTALL_DIR/" 2>/dev/null || true
-    cp -r "$ROOT_DIR/watcher" "$INSTALL_DIR/"
-    cp -r "$ROOT_DIR/scripts" "$INSTALL_DIR/"
+    REMOTE_URL=$(git -C "$ROOT_DIR" config --get remote.origin.url || true)
+
+    if [ -n "$REMOTE_URL" ]; then
+        log_info "Detected git repository source: $REMOTE_URL"
+        log_info "Setting up $INSTALL_DIR as a git clone..."
+        
+        if [ -d "$INSTALL_DIR/.git" ]; then
+            log_info "Updating existing repository at $INSTALL_DIR..."
+            sudo -u "$USER_NAME" git -C "$INSTALL_DIR" fetch origin
+            sudo -u "$USER_NAME" git -C "$INSTALL_DIR" reset --hard origin/main
+        else
+            if [ -d "$INSTALL_DIR" ] && [ "$(ls -A $INSTALL_DIR)" ]; then
+                log_warning "$INSTALL_DIR exists and is not empty. Backing up..."
+                mv "$INSTALL_DIR" "${INSTALL_DIR}.bak.$(date +%s)"
+                mkdir -p "$INSTALL_DIR"
+            fi
+            
+            mkdir -p "$(dirname "$INSTALL_DIR")"
+            chown "$USER_NAME:$USER_NAME" "$(dirname "$INSTALL_DIR")"
+            
+            log_info "Cloning..."
+            sudo -u "$USER_NAME" git clone "$REMOTE_URL" "$INSTALL_DIR"
+        fi
+    else
+        log_warning "Not running from a git repository. Fallback to file copy."
+        log_warning "AUTO-UPDATE WILL BE DISABLED."
+        mkdir -p "$INSTALL_DIR"
+        cp "$ROOT_DIR/agent_watcher.py" "$INSTALL_DIR/"
+        cp "$ROOT_DIR/requirements.txt" "$INSTALL_DIR/" 2>/dev/null || true
+        cp -r "$ROOT_DIR/watcher" "$INSTALL_DIR/"
+        cp -r "$ROOT_DIR/scripts" "$INSTALL_DIR/"
+    fi
 fi
 
 # Determine Source Config

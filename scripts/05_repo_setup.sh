@@ -60,9 +60,39 @@ sudo -u "$USER_NAME" bash << EOF
             git pull
         fi
     else
-        echo "WARNING: GitHub CLI not authenticated. Skipping clone."
-        echo "Run 'gh auth login' and then re-run this script or './setup.sh' to clone the repo."
+        echo "WARNING: GitHub CLI not authenticated."
+        echo "Initiating interactive login..."
+        
+        # We need to run this outside of the sudo bash block to get TTY, 
+        # BUT we want to authenticate for the specific user.
+        # Handling TTY inside sudo bash << EOF is tricky.
+        # Instead, we will signal the parent script to run auth after this block.
+        exit 2
     fi
 EOF
+AUTH_EXIT_CODE=$?
+
+if [ $AUTH_EXIT_CODE -eq 2 ]; then
+    log_info "Running 'gh auth login' for user $USER_NAME. Please follow the prompts..."
+    # Run purely interactive command
+    sudo -u "$USER_NAME" gh auth login
+    
+    # Retry cloning after auth
+    sudo -u "$USER_NAME" bash << EOF
+        echo "Retrying clone after auth..."
+        if gh auth status &>/dev/null; then
+            if [ ! -d "$REPO_PATH" ]; then
+                echo "Cloning $GITHUB_REPO into $REPO_PATH..."
+                gh repo clone "$GITHUB_REPO" "$REPO_PATH"
+            else
+                echo "Repo already exists. Pulling..."
+                cd "$REPO_PATH"
+                git pull
+            fi
+        else
+            echo "Authentication still failed. Skipping clone."
+        fi
+EOF
+fi
 
 log_success "Repository setup checks complete."
