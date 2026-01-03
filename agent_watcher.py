@@ -36,6 +36,7 @@ POLL_INTERVAL = int(os.getenv('POLL_INTERVAL', 60))
 TRIGGER_LABEL = os.getenv('TRIGGER_LABEL', 'status:pending-agent')
 WIP_LABEL = os.getenv('WIP_LABEL', 'status:agent-working')
 DONE_LABEL = os.getenv('DONE_LABEL', 'status:agent-done')
+REVIEW_LABEL = os.getenv('REVIEW_LABEL', 'status:agent-review')
 ERROR_LABEL = os.getenv('ERROR_LABEL', 'status:agent-failed')
 AGENT_COMMAND_TEMPLATE = os.getenv('AGENT_COMMAND')
 WORK_DIR_BASE = os.getenv('WORK_DIR_BASE', 'workspace')
@@ -61,24 +62,37 @@ def run_gh_command(args, cwd=None):
 def get_pending_issues():
     """Fetch issues with the trigger label."""
     try:
-        query = f"assignee:{GITHUB_USER} is:open -label:\"{WIP_LABEL}\" -label:\"{DONE_LABEL}\" -label:\"{ERROR_LABEL}\""
-        logger.debug(f"Checking for issues with query: '{query}'...")
+        # Query 1: Review/Feedback items (High Priority)
+        # We explicitly search for issues with REVIEW_LABEL assigned to user
+        review_query = f"assignee:{GITHUB_USER} is:open label:\"{REVIEW_LABEL}\""
         
-        # We need to use --search for complex filtering (assignee + exclusions)
-        # Note: --search implies --repo is scoped if run inside repo, but we should be explicit if possible.
-        # However, `gh issue list --search` works within the current repo context or global.
-        # Currently we run `gh` which might be global. `gh issue list` accepts `--repo`.
-        # When using `--search`, `gh` behaves like `gh search issues` scoped to the repo if `--repo` is passed?
-        # Actually `gh issue list` has a `--search` flag that allows filtering the list.
+        # Query 2: Standard Pending items (Assigned, no status labels)
+        pending_query = f"assignee:{GITHUB_USER} is:open -label:\"{WIP_LABEL}\" -label:\"{DONE_LABEL}\" -label:\"{ERROR_LABEL}\" -label:\"{REVIEW_LABEL}\""
         
-        output = run_gh_command([
-            'issue', 'list',
-            '--repo', GITHUB_REPO,
-            '--search', query,
-            '--json', 'number,url,title,body', # Fetch body for dependency check
-            '--limit', '5' # Fetch more candidates in case some are blocked
+        all_issues = []
+        
+        # Fetch Review Issues
+        review_out = run_gh_command([
+            'issue', 'list', '--repo', GITHUB_REPO, '--search', review_query,
+            '--json', 'number,url,title,body,labels', '--limit', '5'
         ])
-        return json.loads(output)
+        review_issues = json.loads(review_out)
+        for i in review_issues:
+             i['is_review_task'] = True # Mark as review task
+        all_issues.extend(review_issues)
+        
+        # Fetch Pending Issues (only if we need more work?)
+        # Let's fetch both to be sure
+        pending_out = run_gh_command([
+            'issue', 'list', '--repo', GITHUB_REPO, '--search', pending_query,
+            '--json', 'number,url,title,body,labels', '--limit', '5'
+        ])
+        pending_issues = json.loads(pending_out)
+        for i in pending_issues:
+             i['is_review_task'] = False
+        all_issues.extend(pending_issues)
+        
+        return all_issues
     except Exception as e:
         logger.error(f"Failed to fetch issues: {e}")
         return []
@@ -87,6 +101,11 @@ import re
 
 def check_dependencies(issue):
     """Check if all dependencies are resolved."""
+    # Review tasks should bypass dependency connection? 
+    # Usually yes, if it's in review, deps are likely done or irrelevant for the fix.
+    if issue.get('is_review_task', False):
+        return True
+        
     body = issue.get('body', '')
     if not body:
         return True
@@ -321,8 +340,12 @@ def process_issue(issue):
     
     logger.info(f"Processing Issue #{number}: {title}")
     
-    # 1. Mark as WIP
-    update_labels(number, add_labels=[WIP_LABEL])
+    # 1. Mark as WIP (and remove Review label if present)
+    remove_labels = []
+    if issue.get('is_review_task'):
+        remove_labels.append(REVIEW_LABEL)
+        
+    update_labels(number, add_labels=[WIP_LABEL], remove_labels=remove_labels)
     
     # 2. Prepare Workspace
     try:
@@ -469,6 +492,7 @@ def ensure_labels():
     labels = {
         WIP_LABEL: {'color': 'D93F0B', 'description': 'Agent is currently working on this issue'},
         DONE_LABEL: {'color': '0E8A16', 'description': 'Agent has completed this issue'},
+        REVIEW_LABEL: {'color': 'BFD4F2', 'description': 'User requested agent changes/review'},
         ERROR_LABEL: {'color': 'B60205', 'description': 'Agent failed to complete this issue'}
     }
     
