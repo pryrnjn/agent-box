@@ -39,7 +39,9 @@ DONE_LABEL = os.getenv('DONE_LABEL', 'status:agent-done')
 REVIEW_LABEL = os.getenv('REVIEW_LABEL', 'status:agent-review')
 ERROR_LABEL = os.getenv('ERROR_LABEL', 'status:agent-failed')
 AGENT_COMMAND_TEMPLATE = os.getenv('AGENT_COMMAND')
+AGENT_REVIEW_COMMAND_TEMPLATE = os.getenv('AGENT_REVIEW_COMMAND')
 WORK_DIR_BASE = os.getenv('WORK_DIR_BASE', 'workspace')
+SELF_UPDATE_INTERVAL = int(os.getenv('SELF_UPDATE_INTERVAL', 3600))
 
 def run_gh_command(args, cwd=None):
     """Run a GitHub CLI command and return output."""
@@ -379,16 +381,25 @@ def process_issue(issue):
         update_labels(number, add_labels=[ERROR_LABEL], remove_labels=[WIP_LABEL])
         return
 
-    # 3. Construct Command
-    cmd_str = AGENT_COMMAND_TEMPLATE.format(
-        issue_url=url,
-        issue_number=number,
-        workspace_dir=workspace_dir
-    )
-    
     # Dynamic Instruction Injection
-    if has_feedback:
-        cmd_str += ' "IMPORTANT: Address review comments in @PR_CONTEXT.md"'
+    # If it's a review task AND we have a specific review command, use it.
+    # Otherwise, append the instruction to the standard command.
+    if issue.get('is_review_task') and AGENT_REVIEW_COMMAND_TEMPLATE:
+        cmd_str = AGENT_REVIEW_COMMAND_TEMPLATE.format(
+            issue_url=url,
+            issue_number=number,
+            workspace_dir=workspace_dir
+        )
+        logger.info(f"Using Dedicated Review Command for #{number}")
+    else:
+        # Fallback / Standard behavior
+        cmd_str = AGENT_COMMAND_TEMPLATE.format(
+            issue_url=url,
+            issue_number=number,
+            workspace_dir=workspace_dir
+        )
+        if has_feedback:
+            cmd_str += ' "IMPORTANT: Address review comments in @PR_CONTEXT.md"'
     
     logger.info(f"Executing Agent Command: {cmd_str}")
     
@@ -570,8 +581,11 @@ def main():
             try:
                 loop_count += 1
                 
-                # Check for self-update every ~1 hour (assuming 60s poll)
-                if loop_count % 60 == 0:
+                # Check for self-update based on configured interval
+                # Calculate loops needed: interval / poll_interval
+                loops_per_update = max(1, int(SELF_UPDATE_INTERVAL / POLL_INTERVAL))
+                
+                if loop_count % loops_per_update == 0:
                     check_self_update()
                     
                 logger.info(f"Polling {GITHUB_REPO} for changes... (Time: {time.strftime('%H:%M:%S')})")
