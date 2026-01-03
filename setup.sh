@@ -41,6 +41,8 @@ log_info "Step 4: Service Setup"
 log_info "Step 5: Repository Setup (Target)"
 "$SCRIPTS_SUBDIR/05_repo_setup.sh"
 
+"$SCRIPTS_SUBDIR/06_smart_setup.sh"
+
 log_success "=== Setup Complete! ==="
 log_info "Please configure your environment: nano $INSTALL_DIR/.env"
 log_info "Then start the service: ./start.sh OR systemctl start agent-watcher.service"
