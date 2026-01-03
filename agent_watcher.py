@@ -366,12 +366,18 @@ def process_issue(issue):
         target_branch = generate_branch_name(number, title)
         pr_context = fetch_pr_context(number, target_branch, workspace_dir)
         
-        has_feedback = False
         if pr_context:
             pr_file = Path(workspace_dir) / "PR_CONTEXT.md"
             with open(pr_file, "w") as f:
                 f.write(pr_context)
             logger.info(f"Written PR context to {pr_file}")
+            has_feedback = True
+        elif issue.get('is_review_task'):
+            # Fallback for review tasks where PR context couldn't be fetched
+            pr_file = Path(workspace_dir) / "PR_CONTEXT.md"
+            with open(pr_file, "w") as f:
+                f.write("# Pull Request Context\n\nNo automated PR context found. Please assume standard review or check manually.")
+            logger.info(f"Written placeholder PR context to {pr_file}")
             has_feedback = True
             
         logger.info(f"Written issue context to {issue_file}")
