@@ -181,6 +181,39 @@ def parse_branch_directive(issue_body):
         return branch
     return None
 
+def resolve_target_branch(issue):
+    """
+    Resolve the target branch for the agent to work on.
+    Priority:
+    1. Active Open PR (detected via GitHub CLI)
+    2. Explicit 'Branch: <name>' directive in issue body
+    3. Generated branch name (fallback)
+    """
+    number = issue['number']
+    title = issue['title']
+    
+    # 1. Check Active PR
+    active_branch = find_active_branch(number)
+    if active_branch:
+         logger.info(f"Using existing active branch: {active_branch}")
+         return active_branch
+         
+    # 2. Check Directive
+    explicit_branch = parse_branch_directive(issue.get('body', ''))
+    if explicit_branch:
+         logger.info(f"Using explicit branch from body: {explicit_branch}")
+         return explicit_branch
+         
+    # 3. Fallback
+    target_branch = generate_branch_name(number, title)
+    
+    if issue.get('is_review_task'):
+        logger.warning(f"Review task check: No active PR/Branch found for #{number}. Falling back to generated branch: {target_branch}")
+    else:
+        logger.info(f"No active PR or directive found. Generated Target Branch: {target_branch}")
+        
+    return target_branch
+
 def update_labels(issue_number, add_labels=None, remove_labels=None):
     """Update labels on an issue."""
     args = ['issue', 'edit', str(issue_number), '--repo', GITHUB_REPO]
@@ -260,21 +293,9 @@ def prepare_workspace(issue):
     subprocess.run(['git', 'fetch', '--all'], cwd=repo_path, check=True)
     
     # 2. Determine target branch
-    # First, check if there is an existing PR/branch for this issue
-    branch_name = find_active_branch(number)
+    target_branch = resolve_target_branch(issue)
     
-    if branch_name:
-        target_branch = branch_name
-        logger.info(f"Using existing active branch: {target_branch}")
-    else:
-        # Check for explicit directive in body
-        explicit_branch = parse_branch_directive(issue.get('body', ''))
-        if explicit_branch:
-             target_branch = explicit_branch
-             logger.info(f"Using explicit branch from body: {target_branch}")
-        else:
-             target_branch = generate_branch_name(number, title)
-             logger.info(f"No active PR or directive found. Generated Target Branch: {target_branch}")
+    # 3. Check if remote branch exists
     
     # 3. Check if remote branch exists
     # git ls-remote --heads origin branch_name
