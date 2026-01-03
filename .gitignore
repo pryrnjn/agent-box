@@ -1,0 +1,22 @@
+# Environment Variables (Secrets)
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+env/
+
+# Logs
+*.log
+agent_watcher.log
+
+# System
+.DS_Store
+Thumbs.db
+
+# Workspace (if created locally)
+workspace/
+repo_cache/

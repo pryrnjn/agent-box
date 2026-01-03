@@ -1,22 +1,24 @@
-# Agent Box Setup for Debian 13
+# Agent Box: Secure Scaffolding for Autonomous AI Agents (Self-Healing, Systemd-Sandboxed)
 
-This bundle provides a standalone setup for turning a Debian 13 laptop into an autonomous AI Agent Box.
+**Turn any Linux machine (Debian/Ubuntu/RPi) into a secure, self-updating production environment for AI Agents.**
 
-## Components
-- `setup.sh`: Master orchestrator.
-- `scripts/`: Modular setup scripts.
-  - `01_base_deps.sh`: System dependencies.
-  - `02_gemini_cli.sh`: Installs Gemini CLI (`@google/gemini-cli`).
-  - `03_service.sh`: Service setup.
-- `config.template.env`: Configuration template.
-- `agent_watcher.py`: The service that polls GitHub and triggers agents.
+This repository provides a robust "Agent Box" runtime that transforms a standard server into a managed host for autonomous coding agents (like Gemini, Claude, or GPT). Designed for security and reliability, it features strict **Systemd sandboxing**, **git-based auto-updates**, and a **feedback loop** for handling code reviews.
 
-## Prerequisites
-- A Debian 13 (Trixie) or Debian 12 (Bookworm) machine.
+## 🌟 Key Features
+
+*   **🛡️ Secure by Design**: Runs agents in a strictly isolated Systemd sandbox (`ProtectSystem=strict`, `ReadWritePaths`), ensuring they can only modify their workspace.
+*   **🔄 Self-Healing & Auto-Updating**: The watcher monitors its own repo. If you push an update to the `main` branch, the box pulls the changes and restarts itself autonomously.
+*   **🤖 Universal Agent Host**: Agnostic to the underlying LLM. Configurable to run any CLI-based agent (Gemini CLI, Aider, etc.).
+*   **🔌 GitHub Native Workflow**: Triggers on Issue assignment. Handles full lifecycle: Branching -> Implementation -> PR Creation -> Review Feedback (via `status:agent-review` label).
+*   **🏗️ Idempotent Setup**: One-command setup (`./setup.sh`) that handles dependencies (Python, Node, Git), user creation, and permissions.
+
+## 🚀 Getting Started
+
+### Prerequisites
+- A Debian 13 (Trixie) or Debian 12 (Bookworm) machine (or Ubuntu 22.04+).
 - Root/Sudo access.
-- Internet connection.
-- A GitHub account for the bot (e.g., `pr-gemini`).
-- A Gemini API Key (from Google AI Studio).
+- A dedicated GitHub account for the bot (recommended).
+- A Gemini/LLM API Key.
 
 ## Installation
 
