@@ -40,7 +40,7 @@ ERROR_LABEL = os.getenv('ERROR_LABEL', 'status:agent-failed')
 AGENT_COMMAND_TEMPLATE = os.getenv('AGENT_COMMAND')
 WORK_DIR_BASE = os.getenv('WORK_DIR_BASE', 'workspace')
 
-def run_gh_command(args):
+def run_gh_command(args, cwd=None):
     """Run a GitHub CLI command and return output."""
     try:
         # Check if we are running as a user who is authenticated or if we need to sudo
@@ -48,6 +48,7 @@ def run_gh_command(args):
         cmd = ['gh'] + args
         result = subprocess.run(
             cmd, 
+            cwd=cwd, # Allow running in specific directory (repo)
             capture_output=True, 
             text=True, 
             check=True
@@ -142,15 +143,21 @@ def generate_branch_name(number, title):
     safe_title = re.sub(r'-+', '-', safe_title) # Collapse multiple dashes
     
     # Special handling for "Phase X" to match GEMINI.md policy: feat/phase{N}-{feature-name}
-    # Example Title: "Phase 1: Implement Working Memory" -> feat/phase1-implement-working-memory
-    phase_match = re.match(r'phase\s*(\d+)[:\s-]*', title, re.IGNORECASE)
+    # Example Title: "💾 Phase 1: Implement Working Memory" -> feat/phase1-implement-working-memory
+    # Regex Start: Optional non-word chars (emojis) + "Phase" + whitespace + digit
+    phase_match = re.search(r'(?:^|[\W_]+)phase\s*(\d+)[:\s-]*', title, re.IGNORECASE)
+    
     if phase_match:
         phase_num = phase_match.group(1)
         # Remove the "Phase X" prefix from the safe title to avoid redundancy
-        # safe_title currently has "phase-1-implement..."
-        # We want strict control.
-        # Let's clean the original title of the prefix first
-        clean_title_raw = re.sub(r'^phase\s*\d+[:\s-]*', '', title, flags=re.IGNORECASE)
+        # We want to remove everything up to and including the phase number from the START
+        
+        # 1. Strip leading non-alphanumeric chars from title to handle emoji
+        clean_title_start = re.sub(r'^[^a-zA-Z0-9]+', '', title)
+        
+        # 2. Remove "phase X" part
+        clean_title_raw = re.sub(r'^phase\s*\d+[:\s-]*', '', clean_title_start, flags=re.IGNORECASE)
+        
         clean_safe_title = re.sub(r'[^a-zA-Z0-9-]', '-', clean_title_raw.lower()).strip('-')
         clean_safe_title = re.sub(r'-+', '-', clean_safe_title)
         
@@ -228,19 +235,83 @@ def prepare_workspace(issue):
 
 PR_BASE_BRANCH = os.getenv('PR_BASE_BRANCH', 'develop')
 
-def determine_pr_base(issue):
+# Hardcoded Phase Map from GEMINI.md
+PHASE_BRANCH_MAP = {
+    '0': 'feat/phase0-foundation',
+    '1': 'feat/phase1-memory',
+    '2': 'feat/phase2-teacher',
+    '3': 'feat/phase3-reward',
+    '4': 'feat/phase4-curriculum'
+}
+
+def determine_pr_base(issue, current_branch):
     """Determine the target branch for the PR."""
     body = issue.get('body', '')
     
-    # Check for explicit override in issue body
-    # Pattern: "PR Target: branch_name" or "Base: branch_name"
+    # 1. explicit override
     match = re.search(r'(?:PR Target|Base):\s*([\w/-]+)', body, re.IGNORECASE)
     if match:
         target = match.group(1).strip()
         logger.info(f"Detected explicit PR target from issue body: {target}")
         return target
-        
+
+    # 2. Phase-based mapping
+    # Check if current branch is a feature of a phase (feat/phaseN-...)
+    # But NOT the phase branch itself
+    phase_match = re.match(r'feat/phase(\d+)-', current_branch)
+    if phase_match:
+        phase_num = phase_match.group(1)
+        base = PHASE_BRANCH_MAP.get(phase_num)
+        if base and base != current_branch:
+             logger.info(f"Detected Phase {phase_num} work. Setting PR Base to {base}")
+             return base
+
     return PR_BASE_BRANCH
+
+def fetch_pr_context(issue_number, branch_name, repo_dir):
+    """Fetch PR comments if a PR exists for this branch."""
+    try:
+        # Find PR for this branch
+        # Run in repo dir to leverage git context if needed, but --repo is safer
+        # 'gh pr list --head branch' works globally if --repo is set.
+        pr_list_out = run_gh_command(['pr', 'list', '--head', branch_name, '--json', 'number,url,comments,reviews'], cwd=repo_dir)
+        pr_list = json.loads(pr_list_out)
+        
+        if not pr_list:
+            return None
+            
+        pr = pr_list[0]
+        context = []
+        context.append(f"# Pull Request Context (PR #{pr['number']})")
+        context.append(f"URL: {pr['url']}\n")
+        
+        # Fetch detailed comments/reviews if needed, but summary might be enough if small.
+        # Actually 'comments' and 'reviews' in list view can be sparse.
+        # Better to 'pr view' 
+        
+        pr_view_out = run_gh_command(['pr', 'view', str(pr['number']), '--json', 'comments,reviews', '--repo', GITHUB_REPO])
+        pr_data = json.loads(pr_view_out)
+        
+        context.append("## user Reviews & Comments")
+        
+        # Reviews
+        for review in pr_data.get('reviews', []):
+            if review['state'] != 'APPROVED': # Focus on feedback
+                context.append(f"### Review by {review['author']['login']} ({review['state']})")
+                context.append(review['body'])
+                context.append("---")
+                
+        # Comments
+        for comment in pr_data.get('comments', []):
+            context.append(f"### Comment by {comment['author']['login']}")
+            context.append(comment['body'])
+            context.append("---")
+            
+        return "\n".join(context)
+        
+    except Exception as e:
+        logger.error(f"Failed to fetch PR context: {e}")
+        return None
 
 def process_issue(issue):
     """Process a single issue."""
@@ -257,13 +328,26 @@ def process_issue(issue):
     try:
         workspace_dir = prepare_workspace(issue)
         
-        # Write issue context to a file
+        # Write issue context
         issue_file = Path(workspace_dir) / "CURRENT_ISSUE.md"
         with open(issue_file, "w") as f:
             f.write(f"# Issue #{number}: {title}\n\n")
             f.write(f"URL: {url}\n\n")
             f.write("## Description\n")
             f.write(issue.get('body', ''))
+        
+        # Fetch and write PR context (Feedback Loop)
+        # We need the branch name again to find the PR
+        target_branch = generate_branch_name(number, title)
+        pr_context = fetch_pr_context(number, target_branch, workspace_dir)
+        
+        has_feedback = False
+        if pr_context:
+            pr_file = Path(workspace_dir) / "PR_CONTEXT.md"
+            with open(pr_file, "w") as f:
+                f.write(pr_context)
+            logger.info(f"Written PR context to {pr_file}")
+            has_feedback = True
             
         logger.info(f"Written issue context to {issue_file}")
         
@@ -278,6 +362,10 @@ def process_issue(issue):
         issue_number=number,
         workspace_dir=workspace_dir
     )
+    
+    # Dynamic Instruction Injection
+    if has_feedback:
+        cmd_str += ' "IMPORTANT: Address review comments in @PR_CONTEXT.md"'
     
     logger.info(f"Executing Agent Command: {cmd_str}")
     
@@ -319,7 +407,7 @@ def process_issue(issue):
                 current_branch = branch_proc.stdout.strip()
                 
                 # Determine Base Branch for PR
-                pr_base = determine_pr_base(issue)
+                pr_base = determine_pr_base(issue, current_branch)
                 
                 if current_branch == pr_base: # Don't PR into self
                      logger.warning(f"Current branch IS the base branch ({current_branch}). Skipping PR.")

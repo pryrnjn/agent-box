@@ -71,6 +71,11 @@ pip install requests python-dotenv
 EOF
 log_success "Python environment ready."
 
+# Ensure Gemini directories exist for ReadWritePaths to work
+# Systemd fails with 226/NAMESPACE if a ReadWritePath path doesn't exist
+log_info "Ensuring Gemini config/cache directories exist..."
+sudo -u "$USER_NAME" mkdir -p "/home/$USER_NAME/.gemini" "/home/$USER_NAME/.config/gemini"
+
 # Systemd
 SERVICE_FILE="/etc/systemd/system/agent-watcher.service"
 log_info "Creating systemd unit file at $SERVICE_FILE..."
@@ -91,15 +96,16 @@ RestartSec=60
 # --- Security Sandboxing ---
 # Prevent writing to system directories (only allow writing to install dir)
 ProtectSystem=strict
-ReadWritePaths=$INSTALL_DIR
-# Prevent accessing other user's home directories
+# User home is read-only, BUT we explicitly whitelist correct paths
 ProtectHome=read-only
+# Whitelist Install Dir and Gemini Config Dir
+# Prefix with '-' to ignore if path doesn't exist (though we created them)
+ReadWritePaths=$INSTALL_DIR -/home/$USER_NAME/.gemini -/home/$USER_NAME/.config/gemini
+
 # Create a private /tmp for this service
 PrivateTmp=true
 # Prevent escalating privileges
 NoNewPrivileges=true
-Restart=always
-RestartSec=60
 
 [Install]
 WantedBy=multi-user.target
