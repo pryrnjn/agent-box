@@ -33,20 +33,21 @@ class Git:
             raise
 
     @classmethod
-    def generate_branch_name(cls, number: int, title: str) -> str:
+    def generate_branch_name(cls, number: int, title: str, repo: str) -> str:
         """Generate a branch name based on conventions."""
         safe_title = re.sub(r'[^a-zA-Z0-9-]', '-', title.lower()).strip('-')
         safe_title = re.sub(r'-+', '-', safe_title)
         
-        # Check for Phase match
-        phase_match = re.search(r'(?:^|[\W_]+)phase\s*(\d+)[:\s-]*', title, re.IGNORECASE)
-        if phase_match:
-            phase_num = phase_match.group(1)
-            clean_title_start = re.sub(r'^[^a-zA-Z0-9]+', '', title)
-            clean_title_raw = re.sub(r'^phase\s*\d+[:\s-]*', '', clean_title_start, flags=re.IGNORECASE)
-            clean_safe_title = re.sub(r'[^a-zA-Z0-9-]', '-', clean_title_raw.lower()).strip('-')
-            clean_safe_title = re.sub(r'-+', '-', clean_safe_title)
-            return f"feat/phase{phase_num}-{clean_safe_title}"
+        # Check for Phase match (Only for AI Agents repo)
+        if repo == 'pryrnjn/ai-agents':
+            phase_match = re.search(r'(?:^|[\W_]+)phase\s*(\d+)[:\s-]*', title, re.IGNORECASE)
+            if phase_match:
+                phase_num = phase_match.group(1)
+                clean_title_start = re.sub(r'^[^a-zA-Z0-9]+', '', title)
+                clean_title_raw = re.sub(r'^phase\s*\d+[:\s-]*', '', clean_title_start, flags=re.IGNORECASE)
+                clean_safe_title = re.sub(r'[^a-zA-Z0-9-]', '-', clean_title_raw.lower()).strip('-')
+                clean_safe_title = re.sub(r'-+', '-', clean_safe_title)
+                return f"feat/phase{phase_num}-{clean_safe_title}"
 
         return Config.BRANCH_NAME_TEMPLATE.format(
             number=number,
@@ -79,7 +80,7 @@ class Git:
              return explicit_branch
              
         # 3. Generated
-        target_branch = cls.generate_branch_name(issue.number, issue.title)
+        target_branch = cls.generate_branch_name(issue.number, issue.title, issue.repo)
         
         if issue.is_review_task:
             logger.warning(f"Review task check: No active PR/Branch found for #{issue.number}. Falling back to generated branch: {target_branch}")
