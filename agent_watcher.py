@@ -47,7 +47,8 @@ def check_self_update():
 def main():
     try:
         Config.validate()
-        logger.info(f"Agent Watcher Started for {Config.GITHUB_REPO}")
+        repos = Config.get_github_repos()
+        logger.info(f"Agent Watcher Started for {repos}")
         
         # Ensure labels exist? GitHub.ensure_labels() - could be added
         
@@ -63,21 +64,34 @@ def main():
                 if loop_count % loops_per_update == 0:
                     check_self_update()
                     
-                logger.info(f"Polling {Config.GITHUB_REPO} for changes... (Time: {time.strftime('%H:%M:%S')})")
+                repos = Config.get_github_repos()
+                logger.info(f"Polling {repos} for changes... (Time: {time.strftime('%H:%M:%S')})")
                 
-                issues = GitHub.get_pending_issues()
-                if issues:
-                    processed_any = False
-                    for issue in issues:
-                        if GitHub.check_dependencies(issue):
-                            Workflow.execute_task(issue)
-                            processed_any = True
+                processed_any = False
+                for repo in repos:
+                    try:
+                        issues = GitHub.get_pending_issues(repo)
+                        if issues:
+                            for issue in issues:
+                                if GitHub.check_dependencies(issue):
+                                    Workflow.execute_task(issue)
+                                    processed_any = True
+                                    # Break to restart loop or continue? 
+                                    # If we want to be fair, maybe continue. 
+                                    # But if we want to avoid concurrency issues, maybe break and loop again.
+                                    # For now, let's process one task at a time per poll cycle across all repos.
+                                    break 
+                        else:
+                             logger.debug(f"No pending issues in {repo}.")
+                             
+                        if processed_any:
                             break
-                    
-                    if not processed_any:
-                        logger.info("Found assigned issues, but all are blocked by dependencies.")
-                else:
-                    logger.debug("No pending issues.")
+
+                    except Exception as e_repo:
+                       logger.error(f"Error polling {repo}: {e_repo}")
+
+                if not processed_any:
+                    logger.debug("No pending issues found in any repo.")
                     
             except KeyboardInterrupt:
                 logger.info("Stopping watcher...")

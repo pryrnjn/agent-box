@@ -27,7 +27,7 @@ class GitHub:
             raise
 
     @classmethod
-    def get_pending_issues(cls) -> List[Issue]:
+    def get_pending_issues(cls, repo: str) -> List[Issue]:
         """Fetch issues with the trigger label."""
         try:
             # Query 1: Review/Feedback items (High Priority)
@@ -40,22 +40,24 @@ class GitHub:
             
             # Fetch Review Issues
             review_out = cls.run_gh_command([
-                'issue', 'list', '--repo', Config.GITHUB_REPO, '--search', review_query,
+                'issue', 'list', '--repo', repo, '--search', review_query,
                 '--json', 'number,url,title,body,labels', '--limit', '5'
             ])
             review_issues = json.loads(review_out)
             for i in review_issues:
                  i['is_review_task'] = True
+                 i['repo'] = repo
             all_raw_issues.extend(review_issues)
             
             # Fetch Pending Issues
             pending_out = cls.run_gh_command([
-                'issue', 'list', '--repo', Config.GITHUB_REPO, '--search', pending_query,
+                'issue', 'list', '--repo', repo, '--search', pending_query,
                 '--json', 'number,url,title,body,labels', '--limit', '5'
             ])
             pending_issues = json.loads(pending_out)
             for i in pending_issues:
                  i['is_review_task'] = False
+                 i['repo'] = repo
             all_raw_issues.extend(pending_issues)
             
             return [Issue(**i) for i in all_raw_issues]
@@ -82,7 +84,7 @@ class GitHub:
         
         for dep_num in matches:
             try:
-                output = cls.run_gh_command(['issue', 'view', dep_num, '--repo', Config.GITHUB_REPO, '--json', 'state'])
+                output = cls.run_gh_command(['issue', 'view', dep_num, '--repo', issue.repo, '--json', 'state'])
                 dep_data = json.loads(output)
                 state = dep_data.get('state')
                 
@@ -96,9 +98,9 @@ class GitHub:
         return True
 
     @classmethod
-    def update_labels(cls, issue_number, add_labels=None, remove_labels=None):
+    def update_labels(cls, issue_number, repo, add_labels=None, remove_labels=None):
         """Update labels on an issue."""
-        args = ['issue', 'edit', str(issue_number), '--repo', Config.GITHUB_REPO]
+        args = ['issue', 'edit', str(issue_number), '--repo', repo]
         if add_labels:
             for label in add_labels:
                 args.extend(['--add-label', label])
@@ -113,12 +115,12 @@ class GitHub:
             logger.error(f"Failed to update labels for #{issue_number}: {e}")
 
     @classmethod
-    def find_active_branch(cls, issue_number) -> Optional[str]:
+    def find_active_branch(cls, issue_number, repo) -> Optional[str]:
         """Check if there's already an open PR for this issue and return its branch."""
         try:
             query = f"{issue_number} in:title,body"
             output = cls.run_gh_command([
-                'pr', 'list', '--repo', Config.GITHUB_REPO, 
+                'pr', 'list', '--repo', repo, 
                 '--search', query,
                 '--state', 'open',
                 '--json', 'headRefName,number,updatedAt',
@@ -138,7 +140,7 @@ class GitHub:
         return None
 
     @classmethod
-    def fetch_pr_context(cls, issue_number, branch_name, repo_dir) -> tuple[Optional[str], List[str]]:
+    def fetch_pr_context(cls, issue_number, branch_name, repo_dir, repo_str) -> tuple[Optional[str], List[str]]:
         """Fetch PR comments and thread IDs using GraphQL."""
         try:
             # First, find PR number for the branch
@@ -173,7 +175,7 @@ class GitHub:
             }
             """
             
-            owner, repo_name = Config.GITHUB_REPO.split('/')
+            owner, repo_name = repo_str.split('/')
             
             # Use gh api graphql
             variables = json.dumps({'owner': owner, 'repo': repo_name, 'number': pr_number})
