@@ -85,19 +85,19 @@ def main():
                                     # For now, let's process one task at a time per poll cycle across all repos.
                                     break 
                         else:
-                             logger.debug(f"No pending issues in {repo}.")
+                            logger.debug(f"No pending issues in {repo}.")
                              
                         if processed_any:
                             break
 
                     except Exception as e_repo:
-                       logger.error(f"Error polling {repo}: {e_repo}")
+                        logger.error(f"Error polling {repo}: {e_repo}")
 
                 if not processed_any:
                     if found_any_issues:
-                         logger.info("Found pending issues, but all are currently blocked by dependencies.")
+                        logger.info("Found pending issues, but all are currently blocked by dependencies.")
                     else:
-                         logger.debug("No pending issues found in any repo.")
+                        logger.debug("No pending issues found in any repo.")
                     
             except KeyboardInterrupt:
                 logger.info("Stopping watcher...")

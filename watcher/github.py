@@ -40,8 +40,8 @@ class GitHub:
                 i['repo'] = repo
             return issues
         except Exception as e:
-             logger.error(f"Failed to fetch issues for query '{query}': {e}")
-             return []
+            logger.error(f"Failed to fetch issues for query '{query}': {e}")
+            return []
 
     @classmethod
     def get_pending_issues(cls, repo: str) -> List[Issue]:
