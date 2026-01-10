@@ -1,101 +1,110 @@
-# Agent Box: Secure Scaffolding for Autonomous AI Agents (Self-Healing, Systemd-Sandboxed)
+# Agent Box: Secure Scaffolding for Autonomous AI Agents
 
 **Turn any Linux machine (Debian/Ubuntu/RPi) into a secure, self-updating production environment for AI Agents.**
 
-This repository provides a robust "Agent Box" runtime that transforms a standard server into a managed host for autonomous coding agents (like Gemini, Claude, or GPT). Designed for security and reliability, it features strict **Systemd sandboxing**, **git-based auto-updates**, and a **feedback loop** for handling code reviews.
+This repository provides a robust "Agent Box" runtime that transforms a standard server into a managed host for autonomous coding agents. Designed for security and reliability, it features strict **Systemd sandboxing**, **git-based auto-updates**, and a **modular architecture** for easy extensibility.
 
 ## 🌟 Key Features
 
 *   **🛡️ Secure by Design**: Runs agents in a strictly isolated Systemd sandbox (`ProtectSystem=strict`, `ReadWritePaths`), ensuring they can only modify their workspace.
-*   **🔄 Self-Healing & Auto-Updating**: The watcher monitors its own repo. If you push an update to the `main` branch, the box pulls the changes and restarts itself autonomously.
-*   **🤖 Universal Agent Host**: Agnostic to the underlying LLM. Configurable to run any CLI-based agent (Gemini CLI, Aider, etc.).
-*   **🔌 GitHub Native Workflow**: Triggers on Issue assignment. Handles full lifecycle: Branching -> Implementation -> PR Creation -> Review Feedback (via `status:agent-review` label).
+*   **🔄 Self-Healing & Auto-Updating**: The watcher monitors its own repo. If you push an update to the `main` branch, the box pulls the changes and restarts itself autonomously (configurable via `SELF_UPDATE_INTERVAL`).
+*   **🔌 Modular Architecture**: Built with a clean Python package structure (`watcher/`) separating models, GitHub logic, and git operations.
+*   **🤖 Universal Agent Host**: Agnostic to the underlying LLM. Configurable to run any CLI-based agent.
+*   **✅ GitHub Native Workflow**: 
+    - Triggers on Issue assignment.
+    - **Prioritizes existing PRs** for review fix requests.
+    - Handles full lifecycle: Branching -> Implementation -> PR Creation -> Review Feedback.
 *   **🏗️ Idempotent Setup**: One-command setup (`./setup.sh`) that handles dependencies (Python, Node, Git), user creation, and permissions.
+
+---
 
 ## 🚀 Getting Started
 
 ### Prerequisites
-- A Debian 13 (Trixie) or Debian 12 (Bookworm) machine (or Ubuntu 22.04+).
+- A Debian 12+ or Ubuntu 22.04+ machine.
 - Root/Sudo access.
-- A dedicated GitHub account for the bot (recommended).
+- A dedicated GitHub account for the bot.
 - A Gemini/LLM API Key.
 
-## Installation
+### Installation
 
-1. **Transfer this folder** to your Debian machine (e.g., via `scp` or `rsync`).
-   ```bash
-   scp -r agent_box_setup user@debian-box:~/
-   ```
-
-2. **Run the Setup Script**:
-   ```bash
-   cd agent_box_setup
-   sudo ./setup.sh
-   ```
-   This will run the modular scripts in order to:
-   - Install system dependencies (Python, Node, Git, Build-essential).
-   - Install GitHub CLI (`gh`).
-   - Install **Gemini CLI** (`@google/gemini-cli`) globally.
-   - Create a dedicated directory at `~/agent-box` (configurable).
-   - Enable the `agent-watcher` systemd service.
-   - Attempt to clone the repository (if authenticated).
-
-3. **Authenticate**:
-   - **GitHub**: `gh auth login`
-   - *After auth, you can re-run `./setup.sh` to clone the repo automatically if it failed previously.*
-
-4. **Configure the Agent**:
-   Edit the configuration file generated at `~/agent-box/.env`:
-   ```bash
-   nano ~/agent-box/.env
-   ```
-   **Crucial Settings**:
-   - `GITHUB_REPO`: The `owner/repo` you want to monitor.
-   - `GITHUB_USER`: The bot username (must match the assignee).
-   - `GIT_NAME` / `GIT_EMAIL`: Identity for agent commits.
-   - `AGENT_COMMAND`: The command to run your agent.
-     - Example: `gemini --yolo "Fix the issue in @CURRENT_ISSUE.md. Read @GEMINI.md. Strict Branching Policy."`
-   - **`GEMINI_API_KEY`**: Set your Google Gemini API key here.
-   - **`BRANCH_NAME_TEMPLATE`**: formatting for branch names (default: `feat/issue-{number}-{safe_title}`).
-     - Note: Issues titled "Phase X..." will strictly follow `feat/phaseX-{name}` convention.
-
-4. **Authenticate GitHub CLI**:
-   The agent runs as the user who installed it (or the sudo caller). Authenticate `gh` for that user:
-   ```bash
-   gh auth login
-   ```
-   *Follow the interactive prompts to login as your specific bot account.*
-
-5. **Start the Service**:
-   ```bash
-   sudo systemctl start agent-watcher.service
-   ```
-
-## Usage
-
-1. Create an issue in your repository.
-2. **Assign the issue** to the bot user (e.g., `pr-gemini`).
-3. The Agent Box will pick it up (searching for assigned issues without WIP labels).
-4. You can follow the logs:
-   ```bash
-   journalctl -u agent-watcher.service -f
-   ```
-
-## Logging & Troubleshooting
-
-### Watcher Logs
-The watcher service logs its activity (polling, triggering) to two places:
-1.  **Live System Logs**:
+1.  **Clone or Copy this folder** to your server:
     ```bash
-    journalctl -u agent-watcher -f
+    git clone https://github.com/your/agent-box-setup.git
+    cd agent-box-setup
     ```
-2.  **Log File**:
-    Located at `~/agent-box/agent_watcher.log`.
 
-### Agent (Gemini) Logs
-The output from the agent (Gemini CLI) is captured by the system service.
--   **Standard Output/Error**: Visible in the `journalctl` stream above when the agent is running.
--   **Debug**: Ensure `GEMINI_API_KEY` is correct in `.env` if execution fails immediately.
+2.  **Run the Setup Script**:
+    ```bash
+    sudo ./setup.sh
+    ```
+    This orchestrator script will:
+    - Install base system dependencies (Python, Git, Node.js).
+    - Install GitHub CLI (`gh`) and Gemini CLI (`@google/gemini-cli`).
+    - Deploy the application code and Python environment (`venv`).
+    - configure and enable the systemd service.
+    - Initialize the target repository.
 
-## Idempotency
-You can re-run `./setup.sh` at any time to update dependencies or reset the agent scripts. It will preserve your `.env` config.
+3.  **Configure**:
+    Edit `~/agent-box/.env` (created during setup):
+    ```bash
+    nano ~/agent-box/.env
+    ```
+    **Key Settings**:
+    - `GITHUB_REPO`: The repository to act on.
+    - `GITHUB_USER`: The bot's username.
+    - `AGENT_COMMAND`: The CLI command to run for tasks.
+    - `AGENT_REVIEW_COMMAND`: (Optional) Specialized command for review tasks.
+    - `GEMINI_API_KEY`: Your LLM API key.
+
+4.  **Authenticate**:
+    The agent runs as the dedicated user (default: same as installer). Authenticate GitHub CLI:
+    ```bash
+    gh auth login
+    ```
+
+5.  **Start the Service**:
+    We provide a convenience script to start and monitor the service:
+    ```bash
+    ./start.sh
+    ```
+
+### Management Scripts
+
+- `./setup.sh`: Re-run to update dependencies or reset configuration (Idempotent).
+- `./start.sh`: Start the service and tail logs.
+- `./stop.sh`: Stop the service.
+- `systemctl status agent-watcher`: Check systemd status.
+
+---
+
+## 📦 Architecture
+
+```
+agent-box/
+├── setup.sh                 # Main setup orchestrator
+├── start.sh / stop.sh       # Service management
+├── agent_watcher.py         # Service entry point
+├── watcher/                 # Core Logic Package
+│   ├── config.py            # Configuration loading
+│   ├── models.py            # Data structures (Issue, TaskContext)
+│   ├── github.py            # GitHub API interactions
+│   ├── git.py               # Git & Workspace operations
+│   └── workflow.py          # Execution orchestration
+└── scripts/                 # Modular shell scripts
+```
+
+## 🔍 How it Works
+
+1.  **Polling**: The watcher polls GitHub issues assigned to `GITHUB_USER` every `POLL_INTERVAL`.
+2.  **Context**: It builds a rich context including issue details, linked PRs, and dependencies.
+3.  **Branching**: 
+    - **Active PR**: If an open PR exists, it uses that branch.
+    - **Explicit**: If `Branch: <name>` is in the issue body, it uses that.
+    - **Generated**: Otherwise, it generates a strict branch name (e.g., `feat/phase1...`).
+4.  **Execution**: It executes the `AGENT_COMMAND` in the sandboxed workspace.
+5.  **Verification & PR**: On success, it pushes changes and creates/updates a Pull Request.
+
+## 📝 License
+
+MIT
