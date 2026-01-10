@@ -150,6 +150,17 @@ class Workflow:
         """Push changes and create/update PR."""
         try:
             cwd = context.workspace_dir
+            
+            # Cleanup temporary files
+            for temp_file in ["CURRENT_ISSUE.md", "PR_CONTEXT.md"]:
+                p = Path(cwd) / temp_file
+                if p.exists():
+                    try:
+                        p.unlink()
+                        logger.info(f"Removed temporary file: {temp_file}")
+                    except Exception as e:
+                        logger.warning(f"Failed to remove {temp_file}: {e}")
+
             # Get Current Branch
             branch_proc = subprocess.run(['git', 'rev-parse', '--abbrev-ref', 'HEAD'], cwd=cwd, capture_output=True, text=True, check=True)
             current_branch = branch_proc.stdout.strip()
