@@ -195,7 +195,9 @@ class Workflow:
                 except Exception as e:
                     # Fallback check if creation failed because it exists (race condition or weird gh behavior)
                     logger.warning(f"PR creation failed: {e}. Checking if it actually exists now...")
-                    existing_prs_retry = json.loads(GitHub.run_gh_command(['pr', 'list', '--head', current_branch, '--json', 'url']))
+                    existing_prs_retry = json.loads(GitHub.run_gh_command([
+                        'pr', 'list', '--head', current_branch, '--repo', context.repo, '--json', 'url'
+                    ]))
                     if existing_prs_retry:
                         pr_url = existing_prs_retry[0]['url']
                         logger.info(f"PR found on retry: {pr_url}")
