@@ -138,13 +138,7 @@ class Workflow:
             return match.group(1).strip()
             
         # 2. Phase Mapping
-        phase_map = {
-            '0': 'feat/phase0-foundation',
-            '1': 'feat/phase1-memory',
-            '2': 'feat/phase2-teacher',
-            '3': 'feat/phase3-reward',
-            '4': 'feat/phase4-curriculum'
-        }
+        phase_map = Config.PHASE_MAP
         phase_match = re.match(r'feat/phase(\d+)-', current_branch)
         if phase_match:
             phase_num = phase_match.group(1)

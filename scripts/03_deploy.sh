@@ -114,8 +114,8 @@ if [ -f "requirements.txt" ]; then
     echo "Installing from requirements.txt..."
     pip install -r requirements.txt
 else
-    echo "requirements.txt not found. Installing default dependencies (python-dotenv)..."
-    pip install python-dotenv
+    echo "requirements.txt not found. Installing default dependencies (python-dotenv, pydantic)..."
+    pip install python-dotenv pydantic
 fi
 EOF
 log_success "Deployment and Python environment setup complete."

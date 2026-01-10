@@ -25,13 +25,18 @@ def check_self_update():
         if not os.path.isdir('.git'):
             return
             
-        logger.debug("Checking for self-updates...")
+        logger.debug("Checking for self-updates on 'main' branch...")
         subprocess.run(['git', 'fetch', 'origin'], check=True, capture_output=True)
         
-        status = subprocess.run(['git', 'status', '-uno'], capture_output=True, text=True)
-        if "Your branch is behind" in status.stdout:
-            logger.info("New version detected! Updating...")
-            subprocess.run(['git', 'pull'], check=True)
+        # Get the commit hash of the local HEAD and the remote main branch
+        local_hash_proc = subprocess.run(['git', 'rev-parse', 'HEAD'], capture_output=True, text=True, check=True)
+        remote_hash_proc = subprocess.run(['git', 'rev-parse', 'origin/main'], capture_output=True, text=True, check=True)
+        
+        if local_hash_proc.stdout.strip() != remote_hash_proc.stdout.strip():
+            logger.info("New version detected on 'main' branch! Updating...")
+            # Use reset --hard to match the deployment script and avoid conflicts
+            subprocess.run(['git', 'reset', '--hard', 'origin/main'], check=True, capture_output=True)
+            
             logger.info("Update complete. Restarting service in 5 seconds...")
             time.sleep(5)
             sys.exit(0)

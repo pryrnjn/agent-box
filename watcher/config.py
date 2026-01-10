@@ -30,6 +30,15 @@ class Config:
     BRANCH_NAME_TEMPLATE = os.getenv('BRANCH_NAME_TEMPLATE', 'feat/issue-{number}-{safe_title}')
     PR_BASE_BRANCH = os.getenv('PR_BASE_BRANCH', 'develop')
     
+    # Phase Mapping
+    PHASE_MAP = {
+        '0': 'feat/phase0-foundation',
+        '1': 'feat/phase1-memory',
+        '2': 'feat/phase2-teacher',
+        '3': 'feat/phase3-reward',
+        '4': 'feat/phase4-curriculum'
+    }
+    
     # Logging
     LOG_LEVEL_STR = os.getenv('LOG_LEVEL', 'INFO').upper()
     LOG_LEVEL = getattr(logging, LOG_LEVEL_STR, logging.INFO)
