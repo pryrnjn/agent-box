@@ -27,6 +27,23 @@ class GitHub:
             raise
 
     @classmethod
+    def _fetch_issues_by_query(cls, repo: str, query: str, is_review_task: bool) -> List[Issue]:
+        """Helper to fetch and process issues."""
+        try:
+            out = cls.run_gh_command([
+                'issue', 'list', '--repo', repo, '--search', query,
+                '--json', 'number,url,title,body,labels', '--limit', '5'
+            ])
+            issues = json.loads(out)
+            for i in issues:
+                i['is_review_task'] = is_review_task
+                i['repo'] = repo
+            return issues
+        except Exception as e:
+             logger.error(f"Failed to fetch issues for query '{query}': {e}")
+             return []
+
+    @classmethod
     def get_pending_issues(cls, repo: str) -> List[Issue]:
         """Fetch issues with the trigger label."""
         try:
@@ -39,26 +56,10 @@ class GitHub:
             all_raw_issues = []
             
             # Fetch Review Issues
-            review_out = cls.run_gh_command([
-                'issue', 'list', '--repo', repo, '--search', review_query,
-                '--json', 'number,url,title,body,labels', '--limit', '5'
-            ])
-            review_issues = json.loads(review_out)
-            for i in review_issues:
-                 i['is_review_task'] = True
-                 i['repo'] = repo
-            all_raw_issues.extend(review_issues)
+            all_raw_issues.extend(cls._fetch_issues_by_query(repo, review_query, True))
             
             # Fetch Pending Issues
-            pending_out = cls.run_gh_command([
-                'issue', 'list', '--repo', repo, '--search', pending_query,
-                '--json', 'number,url,title,body,labels', '--limit', '5'
-            ])
-            pending_issues = json.loads(pending_out)
-            for i in pending_issues:
-                 i['is_review_task'] = False
-                 i['repo'] = repo
-            all_raw_issues.extend(pending_issues)
+            all_raw_issues.extend(cls._fetch_issues_by_query(repo, pending_query, False))
             
             return [Issue(**i) for i in all_raw_issues]
             

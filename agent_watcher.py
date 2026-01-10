@@ -64,14 +64,17 @@ def main():
                 if loop_count % loops_per_update == 0:
                     check_self_update()
                     
-                repos = Config.get_github_repos()
+                # repos = Config.get_github_repos() # Redundant
                 logger.info(f"Polling {repos} for changes... (Time: {time.strftime('%H:%M:%S')})")
                 
                 processed_any = False
+                found_any_issues = False
+                
                 for repo in repos:
                     try:
                         issues = GitHub.get_pending_issues(repo)
                         if issues:
+                            found_any_issues = True
                             for issue in issues:
                                 if GitHub.check_dependencies(issue):
                                     Workflow.execute_task(issue)
@@ -91,7 +94,10 @@ def main():
                        logger.error(f"Error polling {repo}: {e_repo}")
 
                 if not processed_any:
-                    logger.debug("No pending issues found in any repo.")
+                    if found_any_issues:
+                         logger.info("Found pending issues, but all are currently blocked by dependencies.")
+                    else:
+                         logger.debug("No pending issues found in any repo.")
                     
             except KeyboardInterrupt:
                 logger.info("Stopping watcher...")
