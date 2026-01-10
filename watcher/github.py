@@ -79,7 +79,7 @@ class GitHub:
         if not issue.body:
             return True
         
-        matches = re.findall(r'(?:[Dd]epends on|[Dd]ependencies|[Bb]locked by) #(\d+)', issue.body)
+        matches = re.findall(r'(?:[Dd]epends on|[Dd]ependencies|[Bb]locked by)[:\s]+#(\d+)', issue.body)
         
         if not matches:
             return True
