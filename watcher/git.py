@@ -59,7 +59,8 @@ class Git:
     def parse_branch_directive(cls, issue_body: str) -> str:
         if not issue_body:
             return None
-        match = re.search(r'Branch:\s*([\w/-]+)', issue_body, re.IGNORECASE)
+        # Robust regex for "Branch: <name>" handling Markdown bolding, etc.
+        match = re.search(r'(?:^|\n|[\W_])(?:Branch)(?:[\W_]*)\s*[:=]\s*([\w/.-]+)', issue_body, re.IGNORECASE)
         if match:
              return match.group(1).strip()
         return None
@@ -138,7 +139,8 @@ class Git:
                  # Determine Base Branch (Source)
                  base_branch = "main"
                  if issue.body:
-                     base_match = re.search(r'(?:PR Target|Base):\s*([\w/-]+)', issue.body, re.IGNORECASE)
+                     # Robust regex for "Base: <name>"
+                     base_match = re.search(r'(?:^|\n|[\W_])(?:PR Target|Base)(?:[\W_]*)\s*[:=]\s*([\w/.-]+)', issue.body, re.IGNORECASE)
                      if base_match:
                          base_branch = base_match.group(1).strip()
                          logger.info(f"Using explicit base branch: {base_branch}")
