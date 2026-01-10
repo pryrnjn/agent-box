@@ -211,6 +211,12 @@ class Workflow:
                     else:
                         raise e
 
+            # Resolve Threads (Code-based)
+            if context.is_review_task and context.unresolved_thread_ids:
+                logger.info(f"Resolving {len(context.unresolved_thread_ids)} review threads...")
+                for thread_id in context.unresolved_thread_ids:
+                    GitHub.resolve_thread(thread_id)
+
             if pr_url:
                 GitHub.run_gh_command([
                     'issue', 'comment', str(context.issue_number),

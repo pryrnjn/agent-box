@@ -144,9 +144,10 @@ class Git:
         )
         
         # Add PR Context if exists
-        pr_context = GitHub.fetch_pr_context(issue.number, target_branch, context.workspace_dir)
+        pr_context, thread_ids = GitHub.fetch_pr_context(issue.number, target_branch, context.workspace_dir)
         if pr_context:
             context.pr_context = pr_context
+            context.unresolved_thread_ids = thread_ids
         elif issue.is_review_task:
              context.pr_context = "# Pull Request Context\n\nNo automated PR context found. Please assume standard review or check manually."
              

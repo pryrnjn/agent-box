@@ -21,6 +21,7 @@ class TaskContext(BaseModel):
     
     # PR Context
     pr_context: Optional[str] = None # The rendered markdown context
+    unresolved_thread_ids: List[str] = []
     
     # Paths
     workspace_dir: str

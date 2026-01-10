@@ -138,38 +138,94 @@ class GitHub:
         return None
 
     @classmethod
-    def fetch_pr_context(cls, issue_number, branch_name, repo_dir) -> Optional[str]:
-        """Fetch PR comments if a PR exists for this branch."""
+    def fetch_pr_context(cls, issue_number, branch_name, repo_dir) -> tuple[Optional[str], List[str]]:
+        """Fetch PR comments and thread IDs using GraphQL."""
         try:
+            # First, find PR number for the branch
             pr_list_out = cls.run_gh_command(['pr', 'list', '--head', branch_name, '--json', 'number,url'], cwd=repo_dir)
             pr_list = json.loads(pr_list_out)
             
             if not pr_list:
-                return None
+                return None, []
                 
             pr = pr_list[0]
+            pr_number = pr['number']
+            
+            # GraphQL Query to fetch threads
+            query = """
+            query($owner: String!, $repo: String!, $number: Int!) {
+              repository(owner: $owner, name: $repo) {
+                pullRequest(number: $number) {
+                  reviewThreads(first: 50) {
+                    nodes {
+                      id
+                      isResolved
+                      comments(first: 1) {
+                        nodes {
+                          author { login }
+                          body
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+            """
+            
+            owner, repo_name = Config.GITHUB_REPO.split('/')
+            
+            # Use gh api graphql
+            variables = json.dumps({'owner': owner, 'repo': repo_name, 'number': pr_number})
+            cmd = ['api', 'graphql', '-f', f'query={query}', '-F', f'variables={variables}']
+            
+            api_out = cls.run_gh_command(cmd)
+            data = json.loads(api_out)
+            
+            threads = data['data']['repository']['pullRequest']['reviewThreads']['nodes']
+            
             context = []
-            context.append(f"# Pull Request Context (PR #{pr['number']})")
+            context.append(f"# Pull Request Context (PR #{pr_number})")
             context.append(f"URL: {pr['url']}\n")
+            context.append("## User Reviews & Comments")
             
-            pr_view_out = cls.run_gh_command(['pr', 'view', str(pr['number']), '--json', 'comments,reviews', '--repo', Config.GITHUB_REPO])
-            pr_data = json.loads(pr_view_out)
+            unresolved_ids = []
             
-            context.append("## user Reviews & Comments")
-            
-            for review in pr_data.get('reviews', []):
-                if review['state'] != 'APPROVED':
-                    context.append(f"### Review by {review['author']['login']} ({review['state']})")
-                    context.append(review['body'])
-                    context.append("---")
+            for thread in threads:
+                if not thread['isResolved']:
+                    comment = thread['comments']['nodes'][0]
+                    author = comment['author']['login']
+                    body = comment['body']
                     
-            for comment in pr_data.get('comments', []):
-                context.append(f"### Comment by {comment['author']['login']}")
-                context.append(comment['body'])
-                context.append("---")
+                    unresolved_ids.append(thread['id'])
+                    
+                    context.append(f"### Comment by {author} (Unresolved)")
+                    context.append(body)
+                    context.append("---")
+            
+            if not unresolved_ids:
+                context.append("No unresolved comments found.")
                 
-            return "\n".join(context)
+            return "\n".join(context), unresolved_ids
             
         except Exception as e:
             logger.error(f"Failed to fetch PR context: {e}")
-            return None
+            return None, []
+
+    @classmethod
+    def resolve_thread(cls, thread_id: str):
+        """Resolve a review thread using GraphQL."""
+        try:
+            query = """
+            mutation($threadId: ID!) {
+              resolveReviewThread(input: {threadId: $threadId}) {
+                clientMutationId
+              }
+            }
+            """
+            variables = json.dumps({'threadId': thread_id})
+            cmd = ['api', 'graphql', '-f', f'query={query}', '-F', f'variables={variables}']
+            cls.run_gh_command(cmd)
+            logger.info(f"Resolved thread {thread_id}")
+        except Exception as e:
+            logger.error(f"Failed to resolve thread {thread_id}: {e}")
