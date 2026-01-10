@@ -50,7 +50,9 @@ def main():
         repos = Config.get_github_repos()
         logger.info(f"Agent Watcher Started for {repos}")
         
-        # Ensure labels exist? GitHub.ensure_labels() - could be added
+        # Ensure labels exist for all tracked repositories
+        for repo in repos:
+            GitHub.ensure_labels(repo)
         
         logger.info(f"Polling every {Config.POLL_INTERVAL} seconds for issues assigned to '{Config.GITHUB_USER}'")
         

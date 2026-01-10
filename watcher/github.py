@@ -99,6 +99,38 @@ class GitHub:
         return True
 
     @classmethod
+    def ensure_labels(cls, repo: str):
+        """Ensure required labels exist in the repository."""
+        required_labels = {
+            Config.TRIGGER_LABEL: {'color': 'D93F0B', 'description': 'Waiting for agent'},
+            Config.WIP_LABEL: {'color': 'BFD4F2', 'description': 'Agent is working'},
+            Config.DONE_LABEL: {'color': '0E8A16', 'description': 'Agent finished'},
+            Config.REVIEW_LABEL: {'color': 'FBCA04', 'description': 'Agent requests review'},
+            Config.ERROR_LABEL: {'color': 'B60205', 'description': 'Agent encountered error'}
+        }
+        
+        try:
+            # Check existing labels
+            out = cls.run_gh_command(['label', 'list', '--repo', repo, '--json', 'name'])
+            existing_labels = {l['name'] for l in json.loads(out)}
+            
+            for name, meta in required_labels.items():
+                if name not in existing_labels:
+                    logger.info(f"Creating missing label '{name}' in {repo}...")
+                    try:
+                        cls.run_gh_command([
+                            'label', 'create', name,
+                            '--repo', repo,
+                            '--color', meta['color'],
+                            '--description', meta['description']
+                        ])
+                    except Exception as e:
+                        logger.warning(f"Failed to create label '{name}' in {repo}: {e}")
+                        
+        except Exception as e:
+            logger.error(f"Failed to ensure labels for {repo}: {e}")
+
+    @classmethod
     def update_labels(cls, issue_number, repo, add_labels=None, remove_labels=None):
         """Update labels on an issue."""
         args = ['issue', 'edit', str(issue_number), '--repo', repo]
