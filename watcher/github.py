@@ -179,9 +179,14 @@ class GitHub:
             owner, repo_name = repo_str.split('/')
             
             # Use gh api graphql
-            variables = json.dumps({'owner': owner, 'repo': repo_name, 'number': pr_number})
-            cmd = ['api', 'graphql', '-f', f'query={query}', '-F', f'variables={variables}']
-            
+            cmd = [
+                'api', 'graphql',
+                '-f', f'query={query}',
+                '-F', f'owner={owner}',
+                '-F', f'repo={repo_name}',
+                '-F', f'number={pr_number}'
+            ]
+
             api_out = cls.run_gh_command(cmd)
             data = json.loads(api_out)
             
@@ -226,8 +231,11 @@ class GitHub:
               }
             }
             """
-            variables = json.dumps({'threadId': thread_id})
-            cmd = ['api', 'graphql', '-f', f'query={query}', '-F', f'variables={variables}']
+            cmd = [
+                'api', 'graphql', 
+                '-f', f'query={query}', 
+                '-F', f'threadId={thread_id}'
+            ]
             cls.run_gh_command(cmd)
             logger.info(f"Resolved thread {thread_id}")
         except Exception as e:
