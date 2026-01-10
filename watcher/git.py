@@ -135,9 +135,18 @@ class Git:
                  cls.run_git(['checkout', target_branch], cwd=repo_path)
                  logger.info("Switched to existing local branch.")
              except subprocess.CalledProcessError:
-                 logger.info(f"Creating new branch {target_branch} from main...")
-                 cls.run_git(['checkout', 'main'], cwd=repo_path)
-                 cls.run_git(['pull', 'origin', 'main'], cwd=repo_path)
+             except subprocess.CalledProcessError:
+                 # Determine Base Branch (Source)
+                 base_branch = "main"
+                 if issue.body:
+                     base_match = re.search(r'(?:PR Target|Base):\s*([\w/-]+)', issue.body, re.IGNORECASE)
+                     if base_match:
+                         base_branch = base_match.group(1).strip()
+                         logger.info(f"Using explicit base branch: {base_branch}")
+
+                 logger.info(f"Creating new branch {target_branch} from {base_branch}...")
+                 cls.run_git(['checkout', base_branch], cwd=repo_path)
+                 cls.run_git(['pull', 'origin', base_branch], cwd=repo_path)
                  cls.run_git(['checkout', '-b', target_branch], cwd=repo_path)
         
         # Build Context

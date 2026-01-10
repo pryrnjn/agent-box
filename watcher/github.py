@@ -61,6 +61,9 @@ class GitHub:
             # Fetch Pending Issues
             all_raw_issues.extend(cls._fetch_issues_by_query(repo, pending_query, False))
             
+            # Sort by ID (Oldest First)
+            all_raw_issues.sort(key=lambda x: x['number'])
+            
             return [Issue(**i) for i in all_raw_issues]
             
         except Exception as e:
