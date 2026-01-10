@@ -135,7 +135,6 @@ class Git:
                  cls.run_git(['checkout', target_branch], cwd=repo_path)
                  logger.info("Switched to existing local branch.")
              except subprocess.CalledProcessError:
-             except subprocess.CalledProcessError:
                  # Determine Base Branch (Source)
                  base_branch = "main"
                  if issue.body:
