@@ -232,8 +232,8 @@ class GitHub:
             }
             """
             cmd = [
-                'api', 'graphql', 
-                '-f', f'query={query}', 
+                'api', 'graphql',
+                '-f', f'query={query}',
                 '-F', f'threadId={thread_id}'
             ]
             cls.run_gh_command(cmd)
