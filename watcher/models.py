@@ -12,6 +12,7 @@ class TaskContext(BaseModel):
     issue_title: str
     issue_body: str
     issue_url: str
+    repo: str  # e.g., "owner/repo"
     
     is_review_task: bool = False
     
@@ -31,5 +32,6 @@ class Issue(BaseModel):
     title: str
     body: str
     url: str
+    repo: str # e.g., "owner/repo"
     labels: List[dict] = []
     is_review_task: bool = False

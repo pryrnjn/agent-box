@@ -6,7 +6,12 @@ from dotenv import load_dotenv
 load_dotenv()
 
 class Config:
-    GITHUB_REPO = os.getenv('GITHUB_REPO')
+    GITHUB_REPOS_STR = os.getenv('GITHUB_REPOS', '')
+    
+    @classmethod
+    def get_github_repos(cls):
+        return [r.strip() for r in cls.GITHUB_REPOS_STR.split(',') if r.strip()]
+
     GITHUB_USER = os.getenv('GITHUB_USER')
     POLL_INTERVAL = int(os.getenv('POLL_INTERVAL', 60))
     SELF_UPDATE_INTERVAL = int(os.getenv('SELF_UPDATE_INTERVAL', 3600))
@@ -45,7 +50,7 @@ class Config:
 
     @classmethod
     def validate(cls):
-        if not cls.GITHUB_REPO:
-            raise ValueError("GITHUB_REPO not defined in config.")
+        if not cls.get_github_repos():
+            raise ValueError("No repositories configured. Set GITHUB_REPOS.")
         if not cls.GITHUB_USER:
             raise ValueError("GITHUB_USER not defined in config.")

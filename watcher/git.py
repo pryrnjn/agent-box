@@ -67,7 +67,7 @@ class Git:
     def resolve_target_branch(cls, issue: Issue) -> str:
         """Resolve the target branch based on priority."""
         # 1. Active PR
-        active_branch = GitHub.find_active_branch(issue.number)
+        active_branch = GitHub.find_active_branch(issue.number, issue.repo)
         if active_branch:
              logger.info(f"Using existing active branch: {active_branch}")
              return active_branch
@@ -96,12 +96,19 @@ class Git:
             base_path = Path(os.getcwd()) / base_path
         
         base_path.mkdir(exist_ok=True)
-        repo_name = Config.GITHUB_REPO.split('/')[-1]
-        repo_path = base_path / repo_name
+        
+        # Use owner/repo structure to avoid collisions
+        parts = issue.repo.split('/')
+        if len(parts) != 2 or not all(parts):
+            raise ValueError(f"Invalid repository format: '{issue.repo}'. Expected 'owner/repo'.")
+        owner, repo_name = parts
+        
+        repo_path = base_path / owner / repo_name
+        repo_path.parent.mkdir(exist_ok=True)
         
         if not repo_path.exists():
-            logger.info(f"Cloning {Config.GITHUB_REPO}...")
-            subprocess.run(['gh', 'repo', 'clone', Config.GITHUB_REPO, str(repo_path)], check=True)
+            logger.info(f"Cloning {issue.repo}...")
+            subprocess.run(['gh', 'repo', 'clone', issue.repo, str(repo_path)], check=True)
             
         logger.info(f"Preparing git repo at {repo_path}...")
         cls.run_git(['fetch', '--all'], cwd=repo_path)
@@ -138,13 +145,14 @@ class Git:
             issue_title=issue.title,
             issue_body=issue.body or "",
             issue_url=issue.url,
+            repo=issue.repo,
             is_review_task=issue.is_review_task,
             target_branch=target_branch,
             workspace_dir=str(repo_path)
         )
         
         # Add PR Context if exists
-        pr_context, thread_ids = GitHub.fetch_pr_context(issue.number, target_branch, context.workspace_dir)
+        pr_context, thread_ids = GitHub.fetch_pr_context(issue.number, target_branch, context.workspace_dir, issue.repo)
         if pr_context:
             context.pr_context = pr_context
             context.unresolved_thread_ids = thread_ids

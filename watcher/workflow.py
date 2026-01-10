@@ -84,11 +84,11 @@ class Workflow:
     @classmethod
     def execute_task(cls, issue: Issue):
         """Execute the full workflow for a task."""
-        logger.info(f"Processing Issue #{issue.number}: {issue.title}")
+        logger.info(f"Processing Issue #{issue.number}: {issue.title} in {issue.repo}")
         
         # 1. Label as WIP
         remove_labels = [Config.REVIEW_LABEL] if issue.is_review_task else []
-        GitHub.update_labels(issue.number, add_labels=[Config.WIP_LABEL], remove_labels=remove_labels)
+        GitHub.update_labels(issue.number, issue.repo, add_labels=[Config.WIP_LABEL], remove_labels=remove_labels)
         
         try:
             # 2. Prepare Workspace
@@ -110,24 +110,21 @@ class Workflow:
             # 3. Execution Loop (Implement -> Verify)
             # For now, we keep it simple (Single Pass) as per request to just modularize existing logic first.
             # The "Execute -> Verify" loop can be expanded here later.
-            # 3. Execution Loop (Implement -> Verify)
-            # For now, we keep it simple (Single Pass) as per request to just modularize existing logic first.
-            # The "Execute -> Verify" loop can be expanded here later.
             return_code, agent_output = cls.run_agent_command(context)
             
             if return_code == 0:
                 # 4. Finalization (Push & PR)
                 if cls.finalize_task(context, agent_output):
-                    GitHub.update_labels(issue.number, add_labels=[Config.DONE_LABEL], remove_labels=[Config.WIP_LABEL])
+                    GitHub.update_labels(issue.number, issue.repo, add_labels=[Config.DONE_LABEL], remove_labels=[Config.WIP_LABEL])
                 else:
-                    GitHub.update_labels(issue.number, add_labels=[Config.ERROR_LABEL], remove_labels=[Config.WIP_LABEL])
+                    GitHub.update_labels(issue.number, issue.repo, add_labels=[Config.ERROR_LABEL], remove_labels=[Config.WIP_LABEL])
 
             else:
-                GitHub.update_labels(issue.number, add_labels=[Config.ERROR_LABEL], remove_labels=[Config.WIP_LABEL])
+                GitHub.update_labels(issue.number, issue.repo, add_labels=[Config.ERROR_LABEL], remove_labels=[Config.WIP_LABEL])
                 
         except Exception as e:
             logger.error(f"Workflow failed for #{issue.number}: {e}")
-            GitHub.update_labels(issue.number, add_labels=[Config.ERROR_LABEL], remove_labels=[Config.WIP_LABEL])
+            GitHub.update_labels(issue.number, issue.repo, add_labels=[Config.ERROR_LABEL], remove_labels=[Config.WIP_LABEL])
 
     @staticmethod
     def determine_pr_base(issue_number, issue_body, current_branch):
@@ -191,7 +188,7 @@ class Workflow:
                         '--body', pr_body,
                         '--head', current_branch,
                         '--base', pr_base,
-                        '--repo', Config.GITHUB_REPO
+                        '--repo', context.repo
                     ])
                     pr_url = pr_out.strip()
                     logger.info(f"PR Created: {pr_url}")
@@ -214,7 +211,7 @@ class Workflow:
             if pr_url:
                 GitHub.run_gh_command([
                     'issue', 'comment', str(context.issue_number),
-                    '--repo', Config.GITHUB_REPO,
+                    '--repo', context.repo,
                     '--body', f"🚀 Agent finished! created/updated PR: {pr_url}"
                 ])
                 
