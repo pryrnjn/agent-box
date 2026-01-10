@@ -188,6 +188,16 @@ class Workflow:
             if existing_prs:
                 logger.info(f"PR already exists: {existing_prs[0]['url']}")
                 pr_url = existing_prs[0]['url']
+                
+                # Add /gemini review comment to trigger review on update
+                try:
+                    GitHub.run_gh_command([
+                        'pr', 'comment', pr_url,
+                        '--body', '/gemini review'
+                    ])
+                    logger.info(f"Added '/gemini review' to existing PR: {pr_url}")
+                except Exception as e:
+                    logger.warning(f"Failed to add review comment to existing PR: {e}")
             else:
                 logger.info(f"Creating PR into {pr_base}...")
                 pr_body = f"Agent completed work for #{context.issue_number}. Closes #{context.issue_number}.\n\n/gemini review"
