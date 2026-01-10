@@ -10,10 +10,7 @@ class Config:
     
     @classmethod
     def get_github_repos(cls):
-        repos = []
-        if cls.GITHUB_REPOS_STR:
-            repos.extend([r.strip() for r in cls.GITHUB_REPOS_STR.split(',') if r.strip()])
-        return repos
+        return [r.strip() for r in cls.GITHUB_REPOS_STR.split(',') if r.strip()]
 
     GITHUB_USER = os.getenv('GITHUB_USER')
     POLL_INTERVAL = int(os.getenv('POLL_INTERVAL', 60))

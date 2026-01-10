@@ -98,7 +98,11 @@ class Git:
         base_path.mkdir(exist_ok=True)
         
         # Use owner/repo structure to avoid collisions
-        owner, repo_name = issue.repo.split('/')
+        parts = issue.repo.split('/')
+        if len(parts) != 2 or not all(parts):
+            raise ValueError(f"Invalid repository format: '{issue.repo}'. Expected 'owner/repo'.")
+        owner, repo_name = parts
+        
         repo_path = base_path / owner / repo_name
         repo_path.parent.mkdir(exist_ok=True)
         

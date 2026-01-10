@@ -27,7 +27,7 @@ class GitHub:
             raise
 
     @classmethod
-    def _fetch_issues_by_query(cls, repo: str, query: str, is_review_task: bool) -> List[Issue]:
+    def _fetch_issues_by_query(cls, repo: str, query: str, is_review_task: bool) -> List[dict]:
         """Helper to fetch and process issues."""
         try:
             out = cls.run_gh_command([
