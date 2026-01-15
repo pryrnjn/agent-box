@@ -18,7 +18,8 @@ from watcher.supervisor import SupervisorWorkflow
 # Configure logging
 logging.basicConfig(
     level=Config.LOG_LEVEL,
-    format='%(asctime)s - %(levelname)s - %(message)s',
+    format='[%(asctime)s][%(levelname)s] %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S',
     handlers=[
         logging.StreamHandler(sys.stdout),
         logging.FileHandler('supervisor.log')

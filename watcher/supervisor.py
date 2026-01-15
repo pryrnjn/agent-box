@@ -207,7 +207,7 @@ class SupervisorWorkflow:
             review_count = pr.get('review_count', 0)
             
             logger.info(f"Processing stale PR #{pr_number}: {pr['title']} (unresolved={unresolved}, reviews={review_count})")
-            AuditLog.stale_pr_detected(repo, pr_number, pr.get('age_hours', 0), unresolved)
+            AuditLog.stale_pr_detected(repo, pr_number, pr.get('age_mins', 0), unresolved)
             
             issue_number = cls.extract_issue_number(pr.get('body', ''))
             
@@ -420,7 +420,7 @@ Respond with ONLY one word: "RESOLVED" if the comment was addressed, or "UNRESOL
             
             stale_prs = []
             now = datetime.now(timezone.utc)
-            stale_threshold = timedelta(hours=Config.STALE_PR_HOURS)
+            stale_threshold = timedelta(minutes=Config.STALE_PR_MINS)
             
             for pr in prs:
                 # Skip PRs that already have agent labels
@@ -451,9 +451,9 @@ Respond with ONLY one word: "RESOLVED" if the comment was addressed, or "UNRESOL
                     
                     pr['unresolved_count'] = unresolved
                     pr['review_count'] = review_count
-                    pr['age_hours'] = age.total_seconds() / 3600
+                    pr['age_mins'] = age.total_seconds() / 60
                     stale_prs.append(pr)
-                    logger.info(f"PR #{pr['number']} is stale ({pr['age_hours']:.1f}h, {unresolved} unresolved, {review_count} reviews)")
+                    logger.info(f"PR #{pr['number']} is stale ({pr['age_mins']:.1f}m, {unresolved} unresolved, {review_count} reviews)")
             
             return stale_prs
             

@@ -8,7 +8,8 @@ from watcher.workflow import Workflow
 # Setup Logging
 logging.basicConfig(
     level=Config.LOG_LEVEL,
-    format='%(asctime)s - %(levelname)s - %(message)s',
+    format='[%(asctime)s][%(levelname)s] %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S',
     handlers=[
         logging.StreamHandler(),
         logging.FileHandler('agent_watcher.log')
