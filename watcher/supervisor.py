@@ -224,12 +224,25 @@ class SupervisorWorkflow:
                     # Still has unresolved comments - need agent to address them
                     logger.info(f"PR #{pr_number}: {new_unresolved} comments still unresolved after auto-resolve")
                     if issue_number:
-                        cls.reassign_for_review(issue_number, repo)
-                        AuditLog.review_assigned(repo, issue_number)
+                        # Only reassign if NOT already assigned (to avoid spamming logs/audit)
+                        issue_labels = cls.get_issue_labels(issue_number, repo)
+                        agent_labels = {Config.DONE_LABEL, Config.WIP_LABEL, Config.REVIEW_LABEL}
+                        
+                        if not (issue_labels & agent_labels):
+                            cls.reassign_for_review(issue_number, repo)
+                            AuditLog.review_assigned(repo, issue_number)
+                        else:
+                            logger.info(f"Issue #{issue_number} already has agent label. Waiting for agent.")
                 else:
                     logger.info(f"PR #{pr_number}: All comments auto-resolved!")
+                    # Remove agent labels from issue since we resolved it
+                    if issue_number:
+                        cls.remove_agent_labels(issue_number, repo)
             else:
                 # All comments resolved
+                if issue_number:
+                     cls.remove_agent_labels(issue_number, repo)
+
                 if review_count < Config.MIN_REVIEW_ROUNDS:
                     # Not enough reviews yet - request another review
                     logger.info(f"PR #{pr_number}: All comments resolved but only {review_count}/{Config.MIN_REVIEW_ROUNDS} reviews. Requesting review.")
@@ -428,14 +441,6 @@ Respond with ONLY one word: "RESOLVED" if the comment was addressed, or "UNRESOL
                 if pr_labels & agent_labels:
                     continue
                 
-                # Check if linked issue already has review label (avoid reprocessing)
-                issue_number = cls.extract_issue_number(pr.get('body', ''))
-                if issue_number:
-                    issue_labels = cls.get_issue_labels(issue_number, repo)
-                    if issue_labels & agent_labels:
-                        logger.debug(f"Skipping PR #{pr['number']} - linked issue #{issue_number} already has agent label")
-                        continue
-                
                 # Parse updatedAt
                 updated_str = pr.get('updatedAt', '')
                 if not updated_str:
@@ -531,6 +536,30 @@ Respond with ONLY one word: "RESOLVED" if the comment was addressed, or "UNRESOL
             logger.info(f"Applied {Config.REVIEW_LABEL} to issue #{issue_number}")
         except Exception as e:
             logger.error(f"Failed to reassign issue #{issue_number} for review: {e}")
+
+    @classmethod
+    def remove_agent_labels(cls, issue_number: int, repo: str):
+        """Remove agent labels (REVIEW, DONE, WIP) from issue."""
+        try:
+            labels_to_remove = [Config.REVIEW_LABEL, Config.DONE_LABEL, Config.WIP_LABEL]
+            for label in labels_to_remove:
+                # We can't batch remove easily with gh cli issue edit, so we try one by one 
+                # or check if it exists first. For robustness, just try remove.
+                # Actually 'gh issue edit --remove-label' takes comma separated list? No, repeatedly.
+                # Let's just try removing REVIEW_LABEL which is the critical one here.
+                # But to be safe, let's remove all agent labels.
+                
+                # Check current labels first to avoid error spam
+                current_labels = cls.get_issue_labels(issue_number, repo)
+                if label in current_labels:
+                    GitHub.run_gh_command([
+                        'issue', 'edit', str(issue_number),
+                        '--repo', repo,
+                        '--remove-label', label
+                    ])
+                    logger.info(f"Removed {label} from issue #{issue_number}")
+        except Exception as e:
+            logger.error(f"Failed to remove agent labels from issue #{issue_number}: {e}")
     
     @classmethod
     def consult_llm(cls, context: str, question: str, workspace_dir: str = None) -> str:
