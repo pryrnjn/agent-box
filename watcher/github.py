@@ -47,8 +47,8 @@ class GitHub:
     def get_pending_issues(cls, repo: str) -> List[Issue]:
         """Fetch issues with the trigger label."""
         try:
-            # Query 1: Review/Feedback items (High Priority)
-            review_query = f"assignee:{Config.GITHUB_USER} is:open label:\"{Config.REVIEW_LABEL}\""
+            # Query 1: Review/Feedback items (High Priority) - Global for repo (don't restrict by assignee)
+            review_query = f"is:open label:\"{Config.REVIEW_LABEL}\""
             
             # Query 2: Standard Pending items
             pending_query = f"assignee:{Config.GITHUB_USER} is:open -label:\"{Config.WIP_LABEL}\" -label:\"{Config.DONE_LABEL}\" -label:\"{Config.ERROR_LABEL}\" -label:\"{Config.REVIEW_LABEL}\""
