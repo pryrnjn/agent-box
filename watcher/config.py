@@ -38,6 +38,7 @@ class Config:
     # Supervisor
     MIN_REVIEW_ROUNDS = int(os.getenv('MIN_REVIEW_ROUNDS', 5))
     SUPERVISOR_POLL_INTERVAL = int(os.getenv('SUPERVISOR_POLL_INTERVAL', 300))
+    STALE_PR_HOURS = int(os.getenv('STALE_PR_HOURS', 24))
     
     # Phase Mapping
     PHASE_MAP = {
