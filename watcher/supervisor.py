@@ -198,39 +198,87 @@ class SupervisorWorkflow:
                 # Assign next issue
                 cls.assign_next_issue(repo)
         
-        # Handle stale PRs (need attention)
+        # Handle stale PRs (open for too long)
         stale_prs = cls.get_stale_prs(repo)
         
         for pr in stale_prs:
             pr_number = pr['number']
-            logger.info(f"Processing stale PR #{pr_number}: {pr['title']}")
+            unresolved = pr.get('unresolved_count', 0)
+            review_count = pr.get('review_count', 0)
             
-            AuditLog.stale_pr_detected(repo, pr_number, pr.get('age_hours', 0), pr.get('unresolved_count', 0))
+            logger.info(f"Processing stale PR #{pr_number}: {pr['title']} (unresolved={unresolved}, reviews={review_count})")
+            AuditLog.stale_pr_detected(repo, pr_number, pr.get('age_hours', 0), unresolved)
             
             issue_number = cls.extract_issue_number(pr.get('body', ''))
             
-            if issue_number:
-                cls.reassign_for_review(issue_number, repo)
-                AuditLog.review_assigned(repo, issue_number)
+            if unresolved > 0:
+                # Has unresolved comments - need agent to address them
+                if issue_number:
+                    cls.reassign_for_review(issue_number, repo)
+                    AuditLog.review_assigned(repo, issue_number)
+            else:
+                # All comments resolved
+                if review_count < Config.MIN_REVIEW_ROUNDS:
+                    # Not enough reviews yet - request another review
+                    logger.info(f"PR #{pr_number}: All comments resolved but only {review_count}/{Config.MIN_REVIEW_ROUNDS} reviews. Requesting review.")
+                    cls.request_review(pr_number, repo)
+                else:
+                    # Enough reviews and all resolved - merge!
+                    logger.info(f"PR #{pr_number}: All comments resolved with {review_count} reviews. Merging.")
+                    if cls.merge_pr(pr_number, repo):
+                        AuditLog.pr_merged(repo, pr_number, issue_number)
+                        if issue_number:
+                            cls.close_issue(issue_number, repo)
+                        cls.assign_next_issue(repo)
+    
+    @classmethod
+    def request_review(cls, pr_number: int, repo: str):
+        """Add a comment to request another review cycle."""
+        try:
+            GitHub.run_gh_command([
+                'pr', 'comment', str(pr_number),
+                '--repo', repo,
+                '--body', '/gemini review'
+            ])
+            logger.info(f"Requested review on PR #{pr_number}")
+        except Exception as e:
+            logger.error(f"Failed to request review on PR #{pr_number}: {e}")
     
     @classmethod
     def get_stale_prs(cls, repo: str) -> List[dict]:
-        """Find PRs that are open for too long with unresolved comments."""
+        """Find PRs that are open for too long."""
         from datetime import datetime, timezone, timedelta
         
         try:
+            # Get open PRs - but exclude those with agent labels (already being handled)
             out = GitHub.run_gh_command([
                 'pr', 'list', '--repo', repo,
                 '--state', 'open',
-                '--json', 'number,title,url,body,updatedAt,headRefName'
+                '--json', 'number,title,url,body,updatedAt,headRefName,labels'
             ])
             prs = json.loads(out)
+            
+            # Labels that indicate agent is handling or has handled the PR
+            agent_labels = {Config.DONE_LABEL, Config.WIP_LABEL, Config.REVIEW_LABEL}
             
             stale_prs = []
             now = datetime.now(timezone.utc)
             stale_threshold = timedelta(hours=Config.STALE_PR_HOURS)
             
             for pr in prs:
+                # Skip PRs that already have agent labels
+                pr_labels = {l.get('name', '') for l in pr.get('labels', [])}
+                if pr_labels & agent_labels:
+                    continue
+                
+                # Check if linked issue already has review label (avoid reprocessing)
+                issue_number = cls.extract_issue_number(pr.get('body', ''))
+                if issue_number:
+                    issue_labels = cls.get_issue_labels(issue_number, repo)
+                    if issue_labels & agent_labels:
+                        logger.debug(f"Skipping PR #{pr['number']} - linked issue #{issue_number} already has agent label")
+                        continue
+                
                 # Parse updatedAt
                 updated_str = pr.get('updatedAt', '')
                 if not updated_str:
@@ -240,15 +288,15 @@ class SupervisorWorkflow:
                 age = now - updated_at
                 
                 if age > stale_threshold:
-                    # Check for unresolved threads
+                    # Get unresolved count and review count
                     owner, repo_name = repo.split('/')
-                    unresolved = cls.get_unresolved_count(pr['number'], owner, repo_name)
+                    unresolved, review_count = cls.get_pr_review_status(pr['number'], owner, repo_name)
                     
-                    if unresolved > 0:
-                        pr['unresolved_count'] = unresolved
-                        pr['age_hours'] = age.total_seconds() / 3600
-                        stale_prs.append(pr)
-                        logger.info(f"PR #{pr['number']} is stale ({pr['age_hours']:.1f}h) with {unresolved} unresolved threads")
+                    pr['unresolved_count'] = unresolved
+                    pr['review_count'] = review_count
+                    pr['age_hours'] = age.total_seconds() / 3600
+                    stale_prs.append(pr)
+                    logger.info(f"PR #{pr['number']} is stale ({pr['age_hours']:.1f}h, {unresolved} unresolved, {review_count} reviews)")
             
             return stale_prs
             
@@ -257,13 +305,31 @@ class SupervisorWorkflow:
             return []
     
     @classmethod
-    def get_unresolved_count(cls, pr_number: int, owner: str, repo_name: str) -> int:
-        """Get count of unresolved review threads."""
+    def get_issue_labels(cls, issue_number: int, repo: str) -> set:
+        """Get labels for an issue."""
+        try:
+            out = GitHub.run_gh_command([
+                'issue', 'view', str(issue_number),
+                '--repo', repo,
+                '--json', 'labels'
+            ])
+            data = json.loads(out)
+            return {l.get('name', '') for l in data.get('labels', [])}
+        except Exception as e:
+            logger.error(f"Failed to get labels for issue #{issue_number}: {e}")
+            return set()
+    
+    @classmethod
+    def get_pr_review_status(cls, pr_number: int, owner: str, repo_name: str) -> tuple:
+        """Get count of unresolved threads and total reviews. Returns (unresolved, review_count)."""
         try:
             query = """
             query($owner: String!, $repo: String!, $number: Int!) {
               repository(owner: $owner, name: $repo) {
                 pullRequest(number: $number) {
+                  reviews(first: 100) {
+                    totalCount
+                  }
                   reviewThreads(first: 100) {
                     nodes {
                       isResolved
@@ -285,12 +351,16 @@ class SupervisorWorkflow:
             out = GitHub.run_gh_command(cmd)
             data = json.loads(out)
             
-            threads = data['data']['repository']['pullRequest']['reviewThreads']['nodes']
-            return sum(1 for t in threads if not t['isResolved'])
+            pr_data = data['data']['repository']['pullRequest']
+            threads = pr_data['reviewThreads']['nodes']
+            unresolved = sum(1 for t in threads if not t['isResolved'])
+            review_count = pr_data['reviews']['totalCount']
+            
+            return (unresolved, review_count)
             
         except Exception as e:
-            logger.error(f"Failed to get unresolved count for PR #{pr_number}: {e}")
-            return 0
+            logger.error(f"Failed to get review status for PR #{pr_number}: {e}")
+            return (0, 0)
     
     @classmethod
     def reassign_for_review(cls, issue_number: int, repo: str):
