@@ -19,7 +19,10 @@ from watcher.supervisor import SupervisorWorkflow
 logging.basicConfig(
     level=Config.LOG_LEVEL,
     format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[logging.StreamHandler(sys.stdout)]
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+        logging.FileHandler('supervisor.log')
+    ]
 )
 logger = logging.getLogger(__name__)
 
