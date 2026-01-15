@@ -35,6 +35,10 @@ class Config:
     BRANCH_NAME_TEMPLATE = os.getenv('BRANCH_NAME_TEMPLATE', 'feat/issue-{number}-{safe_title}')
     PR_BASE_BRANCH = os.getenv('PR_BASE_BRANCH', 'develop')
     
+    # Supervisor
+    MIN_REVIEW_ROUNDS = int(os.getenv('MIN_REVIEW_ROUNDS', 5))
+    SUPERVISOR_POLL_INTERVAL = int(os.getenv('SUPERVISOR_POLL_INTERVAL', 300))
+    
     # Phase Mapping
     PHASE_MAP = {
         '0': 'feat/phase0-foundation',
