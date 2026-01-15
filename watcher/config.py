@@ -40,6 +40,10 @@ class Config:
     SUPERVISOR_POLL_INTERVAL = int(os.getenv('SUPERVISOR_POLL_INTERVAL', 300))
     STALE_PR_HOURS = int(os.getenv('STALE_PR_HOURS', 24))
     
+    # Audit & Notifications
+    AUDIT_LOG_PATH = os.getenv('AUDIT_LOG_PATH', 'audit.log')
+    NTFY_TOPIC = os.getenv('NTFY_TOPIC', '')  # e.g., 'agent-box-yourname'
+    
     # Phase Mapping
     PHASE_MAP = {
         '0': 'feat/phase0-foundation',

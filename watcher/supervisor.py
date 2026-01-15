@@ -173,6 +173,8 @@ class SupervisorWorkflow:
     @classmethod
     def supervise_repo(cls, repo: str):
         """Main supervision loop for a single repo."""
+        from .audit import AuditLog
+        
         logger.info(f"Supervising {repo}...")
         
         # Handle mature PRs (ready to merge)
@@ -187,6 +189,8 @@ class SupervisorWorkflow:
             
             # Merge the PR
             if cls.merge_pr(pr_number, repo):
+                AuditLog.pr_merged(repo, pr_number, issue_number)
+                
                 # Close the issue if found
                 if issue_number:
                     cls.close_issue(issue_number, repo)
@@ -201,10 +205,13 @@ class SupervisorWorkflow:
             pr_number = pr['number']
             logger.info(f"Processing stale PR #{pr_number}: {pr['title']}")
             
+            AuditLog.stale_pr_detected(repo, pr_number, pr.get('age_hours', 0), pr.get('unresolved_count', 0))
+            
             issue_number = cls.extract_issue_number(pr.get('body', ''))
             
             if issue_number:
                 cls.reassign_for_review(issue_number, repo)
+                AuditLog.review_assigned(repo, issue_number)
     
     @classmethod
     def get_stale_prs(cls, repo: str) -> List[dict]:

@@ -84,7 +84,10 @@ class Workflow:
     @classmethod
     def execute_task(cls, issue: Issue):
         """Execute the full workflow for a task."""
+        from .audit import AuditLog
+        
         logger.info(f"Processing Issue #{issue.number}: {issue.title} in {issue.repo}")
+        AuditLog.task_started(issue.repo, issue.number, issue.title)
         
         # 1. Label as WIP
         remove_labels = [Config.REVIEW_LABEL] if issue.is_review_task else []
@@ -116,15 +119,19 @@ class Workflow:
                 # 4. Finalization (Push & PR)
                 if cls.finalize_task(context, agent_output):
                     GitHub.update_labels(issue.number, issue.repo, add_labels=[Config.DONE_LABEL], remove_labels=[Config.WIP_LABEL])
+                    AuditLog.task_completed(issue.repo, issue.number)
                 else:
                     GitHub.update_labels(issue.number, issue.repo, add_labels=[Config.ERROR_LABEL], remove_labels=[Config.WIP_LABEL])
+                    AuditLog.task_failed(issue.repo, issue.number, "Finalization failed")
 
             else:
                 GitHub.update_labels(issue.number, issue.repo, add_labels=[Config.ERROR_LABEL], remove_labels=[Config.WIP_LABEL])
+                AuditLog.task_failed(issue.repo, issue.number, f"Agent returned code {return_code}")
                 
         except Exception as e:
             logger.error(f"Workflow failed for #{issue.number}: {e}")
             GitHub.update_labels(issue.number, issue.repo, add_labels=[Config.ERROR_LABEL], remove_labels=[Config.WIP_LABEL])
+            AuditLog.task_failed(issue.repo, issue.number, str(e))
 
     @staticmethod
     def determine_pr_base(issue_number, issue_body, current_branch):
