@@ -85,8 +85,15 @@ else
         log_info "Config file exists at $INSTALL_DIR/.env and appears configured."
     else
         if [ -f "$ROOT_DIR/.env" ]; then
-            log_info "Overwriting existing config with local .env found in bundle..."
-            cp "$ROOT_DIR/.env" "$INSTALL_DIR/.env"
+            # Skip copy if source and destination are the same file (in-place install)
+            ABS_SRC=$(readlink -f "$ROOT_DIR/.env")
+            ABS_DST=$(readlink -f "$INSTALL_DIR/.env")
+            if [ "$ABS_SRC" != "$ABS_DST" ]; then
+                log_info "Overwriting existing config with local .env found in bundle..."
+                cp "$ROOT_DIR/.env" "$INSTALL_DIR/.env"
+            else
+                log_info "Config already in place (in-place install)."
+            fi
         else
             log_info "Config exists. Keeping it."
         fi
