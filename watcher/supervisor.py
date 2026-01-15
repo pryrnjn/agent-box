@@ -531,7 +531,8 @@ Respond with ONLY one word: "RESOLVED" if the comment was addressed, or "UNRESOL
             GitHub.run_gh_command([
                 'issue', 'edit', str(issue_number),
                 '--repo', repo,
-                '--add-label', Config.REVIEW_LABEL
+                '--add-label', Config.REVIEW_LABEL,
+                '--add-assignee', Config.GITHUB_USER
             ])
             logger.info(f"Applied {Config.REVIEW_LABEL} to issue #{issue_number}")
         except Exception as e:
