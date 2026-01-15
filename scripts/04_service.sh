@@ -58,4 +58,37 @@ systemctl daemon-reload
 log_info "Enabling agent-watcher service..."
 systemctl enable agent-watcher.service
 
-log_success "Service 'agent-watcher' configured and enabled."
+# --- Supervisor Service ---
+SUPERVISOR_SERVICE_FILE="/etc/systemd/system/agent-supervisor.service"
+log_info "Creating supervisor systemd unit file at $SUPERVISOR_SERVICE_FILE..."
+cat > "$SUPERVISOR_SERVICE_FILE" <<EOF
+[Unit]
+Description=Agent Box Supervisor Service
+After=network.target agent-watcher.service
+
+[Service]
+Type=simple
+User=$USER_NAME
+WorkingDirectory=$INSTALL_DIR
+EnvironmentFile=$INSTALL_DIR/.env
+ExecStart=$INSTALL_DIR/venv/bin/python3 $INSTALL_DIR/supervisor.py
+Restart=always
+RestartSec=60
+
+# --- Security Sandboxing ---
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=$INSTALL_DIR -/home/$USER_NAME/.gemini -/home/$USER_NAME/.config/gemini
+PrivateTmp=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+log_info "Reloading systemd daemon..."
+systemctl daemon-reload
+log_info "Enabling agent-supervisor service..."
+systemctl enable agent-supervisor.service
+
+log_success "Services 'agent-watcher' and 'agent-supervisor' configured and enabled."
