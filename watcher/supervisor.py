@@ -226,7 +226,7 @@ class SupervisorWorkflow:
                     if issue_number:
                         # Only reassign if NOT already assigned (to avoid spamming logs/audit)
                         issue_labels = cls.get_issue_labels(issue_number, repo)
-                        agent_labels = {Config.DONE_LABEL, Config.WIP_LABEL, Config.REVIEW_LABEL}
+                        agent_labels = {Config.WIP_LABEL, Config.REVIEW_LABEL}
                         
                         if not (issue_labels & agent_labels):
                             cls.reassign_for_review(issue_number, repo)
