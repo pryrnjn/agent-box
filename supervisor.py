@@ -15,6 +15,8 @@ import sys
 from watcher.config import Config
 from watcher.supervisor import SupervisorWorkflow
 
+from watcher.monitor import LogMonitor
+
 # Configure logging
 logging.basicConfig(
     level=Config.LOG_LEVEL,
@@ -35,8 +37,16 @@ def main():
     Config.validate()
     repos = Config.get_github_repos()
     
+    # Initialize Log Monitor
+    # Monitor both agent_watcher.log and supervisor.log
+    log_monitor = LogMonitor(['agent_watcher.log', 'supervisor.log'])
+    
     while True:
         try:
+            # 1. Monitor Logs
+            log_monitor.check_logs()
+            
+            # 2. Supervise Repos
             for repo in repos:
                 SupervisorWorkflow.supervise_repo(repo)
                 
