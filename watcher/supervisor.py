@@ -212,10 +212,22 @@ class SupervisorWorkflow:
             issue_number = cls.extract_issue_number(pr.get('body', ''))
             
             if unresolved > 0:
-                # Has unresolved comments - need agent to address them
-                if issue_number:
-                    cls.reassign_for_review(issue_number, repo)
-                    AuditLog.review_assigned(repo, issue_number)
+                # Has unresolved comments - try to auto-resolve them first
+                logger.info(f"PR #{pr_number}: Attempting to auto-resolve {unresolved} comments...")
+                resolved_count = cls.review_and_resolve_comments(pr_number, repo)
+                
+                # Recheck unresolved count after auto-resolve
+                owner, repo_name = repo.split('/')
+                new_unresolved, _ = cls.get_pr_review_status(pr_number, owner, repo_name)
+                
+                if new_unresolved > 0:
+                    # Still has unresolved comments - need agent to address them
+                    logger.info(f"PR #{pr_number}: {new_unresolved} comments still unresolved after auto-resolve")
+                    if issue_number:
+                        cls.reassign_for_review(issue_number, repo)
+                        AuditLog.review_assigned(repo, issue_number)
+                else:
+                    logger.info(f"PR #{pr_number}: All comments auto-resolved!")
             else:
                 # All comments resolved
                 if review_count < Config.MIN_REVIEW_ROUNDS:
@@ -243,6 +255,151 @@ class SupervisorWorkflow:
             logger.info(f"Requested review on PR #{pr_number}")
         except Exception as e:
             logger.error(f"Failed to request review on PR #{pr_number}: {e}")
+    
+    @classmethod
+    def review_and_resolve_comments(cls, pr_number: int, repo: str) -> int:
+        """Review unresolved comments and auto-resolve if addressed. Returns count resolved."""
+        owner, repo_name = repo.split('/')
+        threads = cls.get_unresolved_threads(pr_number, owner, repo_name)
+        
+        resolved_count = 0
+        for thread in threads:
+            thread_id = thread['id']
+            comment_body = thread['comment']
+            file_path = thread.get('path', 'unknown')
+            
+            logger.info(f"Checking if comment on {file_path} was addressed...")
+            
+            if cls.check_comment_addressed(pr_number, repo, comment_body, file_path):
+                if cls.resolve_thread(thread_id):
+                    resolved_count += 1
+                    logger.info(f"Auto-resolved thread on {file_path}")
+                else:
+                    logger.warning(f"Failed to resolve thread on {file_path}")
+            else:
+                logger.info(f"Comment on {file_path} was NOT addressed")
+        
+        return resolved_count
+    
+    @classmethod
+    def get_unresolved_threads(cls, pr_number: int, owner: str, repo_name: str) -> List[dict]:
+        """Get unresolved review threads with their content."""
+        try:
+            query = """
+            query($owner: String!, $repo: String!, $number: Int!) {
+              repository(owner: $owner, name: $repo) {
+                pullRequest(number: $number) {
+                  reviewThreads(first: 100) {
+                    nodes {
+                      id
+                      isResolved
+                      path
+                      line
+                      comments(first: 1) {
+                        nodes {
+                          body
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+            """
+            
+            cmd = [
+                'api', 'graphql',
+                '-f', f'query={query}',
+                '-F', f'owner={owner}',
+                '-F', f'repo={repo_name}',
+                '-F', f'number={pr_number}'
+            ]
+            
+            out = GitHub.run_gh_command(cmd)
+            data = json.loads(out)
+            
+            threads = data['data']['repository']['pullRequest']['reviewThreads']['nodes']
+            unresolved = []
+            for t in threads:
+                if not t['isResolved']:
+                    comments = t.get('comments', {}).get('nodes', [])
+                    comment_body = comments[0]['body'] if comments else ''
+                    unresolved.append({
+                        'id': t['id'],
+                        'path': t.get('path', ''),
+                        'line': t.get('line'),
+                        'comment': comment_body
+                    })
+            
+            return unresolved
+            
+        except Exception as e:
+            logger.error(f"Failed to get unresolved threads for PR #{pr_number}: {e}")
+            return []
+    
+    @classmethod
+    def check_comment_addressed(cls, pr_number: int, repo: str, comment: str, file_path: str) -> bool:
+        """Use LLM agent to check if a review comment was addressed."""
+        import subprocess
+        
+        prompt = f"""You are reviewing a Pull Request.
+
+A reviewer left this comment on file `{file_path}`:
+---
+{comment}
+---
+
+Check the current code in the PR to determine if this comment has been addressed.
+Use `gh pr diff {pr_number} --repo {repo}` to see the changes.
+
+Respond with ONLY one word: "RESOLVED" if the comment was addressed, or "UNRESOLVED" if not."""
+
+        try:
+            cmd = f'gemini --yolo "{prompt}"'
+            
+            result = subprocess.run(
+                cmd,
+                shell=True,
+                capture_output=True,
+                text=True,
+                timeout=120
+            )
+            
+            output = result.stdout.strip().upper()
+            return 'RESOLVED' in output
+            
+        except Exception as e:
+            logger.error(f"Failed to check comment: {e}")
+            return False
+    
+    @classmethod
+    def resolve_thread(cls, thread_id: str) -> bool:
+        """Resolve a review thread via GraphQL mutation."""
+        try:
+            mutation = """
+            mutation($threadId: ID!) {
+              resolveReviewThread(input: {threadId: $threadId}) {
+                thread {
+                  isResolved
+                }
+              }
+            }
+            """
+            
+            cmd = [
+                'api', 'graphql',
+                '-f', f'query={mutation}',
+                '-F', f'threadId={thread_id}'
+            ]
+            
+            out = GitHub.run_gh_command(cmd)
+            data = json.loads(out)
+            
+            return data.get('data', {}).get('resolveReviewThread', {}).get('thread', {}).get('isResolved', False)
+            
+        except Exception as e:
+            logger.error(f"Failed to resolve thread {thread_id}: {e}")
+            return False
     
     @classmethod
     def get_stale_prs(cls, repo: str) -> List[dict]:
