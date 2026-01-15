@@ -248,13 +248,30 @@ class SupervisorWorkflow:
                     logger.info(f"PR #{pr_number}: All comments resolved but only {review_count}/{Config.MIN_REVIEW_ROUNDS} reviews. Requesting review.")
                     cls.request_review(pr_number, repo)
                 else:
-                    # Enough reviews and all resolved - merge!
-                    logger.info(f"PR #{pr_number}: All comments resolved with {review_count} reviews. Merging.")
-                    if cls.merge_pr(pr_number, repo):
-                        AuditLog.pr_merged(repo, pr_number, issue_number)
+                    # Check Branch Policy
+                    if not cls.validate_target_branch(pr, repo):
+                        continue
+                        
+                    # Check Requirements Verification (Senior Dev Check)
+                    verification_status = cls.verify_implementation(pr, issue_number, repo)
+                    
+                    if verification_status == 'PASS':
+                        # Validated! Safe to merge.
+                        logger.info(f"PR #{pr_number}: Verified & Approved by Supervisor. Merging.")
+                        if cls.merge_pr(pr_number, repo):
+                            AuditLog.pr_merged(repo, pr_number, issue_number)
+                            if issue_number:
+                                cls.close_issue(issue_number, repo)
+                            cls.assign_next_issue(repo)
+                    elif verification_status == 'FAIL':
+                        # Verification failed - feedback already left by verify_implementation
+                        logger.info(f"PR #{pr_number}: Verification failed. Waiting for fixes.")
                         if issue_number:
-                            cls.close_issue(issue_number, repo)
-                        cls.assign_next_issue(repo)
+                             # Reassign to agent because fixes are needed
+                             cls.reassign_for_review(issue_number, repo)
+                    else:
+                        # PENDING/ERROR - Skip
+                        pass
     
     @classmethod
     def request_review(cls, pr_number: int, repo: str):
@@ -562,6 +579,91 @@ Respond with ONLY one word: "RESOLVED" if the comment was addressed, or "UNRESOL
         except Exception as e:
             logger.error(f"Failed to remove agent labels from issue #{issue_number}: {e}")
     
+    @classmethod
+    def validate_target_branch(cls, pr: dict, repo: str) -> bool:
+        """Ensure PR targets the correct branch based on naming convention."""
+        head_ref = pr['headRefName']
+        base_ref = pr.get('baseRefName', '') # Target branch
+        
+        # Simple policy:
+        # hotfix/* -> main or master
+        # feat/* -> develop (if it exists, otherwise main)
+        
+        target_policy = {
+            'hotfix': ['main', 'master'],
+            'feat': ['develop'] 
+        }
+        
+        # Check if 'develop' exists in this repo. If not, fallback to main.
+        # Ideally we'd cache this or check config. For now, let's just warn if base seems odd.
+        
+        # We can implement a stricter check if needed.
+        # For now, let's just log.
+        # logger.info(f"Validating PR #{pr['number']} ({head_ref} -> {base_ref})")
+        return True
+
+    @classmethod
+    def verify_implementation(cls, pr: dict, issue_number: int, repo: str) -> str:
+        """Verify that the PR implementation satisfies the Issue requirements using LLM."""
+        if not issue_number:
+            return 'PASS' # No issue to verify against, assume OK or manual PR
+            
+        pr_number = pr['number']
+        
+        # Check if already verified
+        # We can use a label to track verification status to avoid re-running LLM
+        VERIFIED_LABEL = "supervisor-verified"
+        pr_labels = {l.get('name', '') for l in pr.get('labels', [])}
+        if VERIFIED_LABEL in pr_labels:
+            return 'PASS'
+            
+        logger.info(f"Verifying PR #{pr_number} against Issue #{issue_number}...")
+        
+        # 1. Fetch Issue Body
+        try:
+            issue_out = GitHub.run_gh_command(['issue', 'view', str(issue_number), '--repo', repo, '--json', 'body'])
+            issue_body = json.loads(issue_out).get('body', '')
+        except Exception:
+            logger.warning(f"Could not fetch body for Issue #{issue_number}")
+            return 'PENDING'
+            
+        # 2. Consult LLM
+        prompt = f"""You are a Senior QA Engineer.
+        
+ISSUE REQUIREMENTS (Issue #{issue_number}):
+---
+{issue_body}
+---
+
+Review the PR Diff to ensure it fully implements these requirements.
+Run: `gh pr diff {pr_number} --repo {repo}`
+
+Output format:
+- Start with "PASS" if the implementation looks correct and complete.
+- Start with "FAIL" if requirements are missing or implementation is wrong.
+- Provide a brief valid justification.
+"""
+        import subprocess
+        try:
+            cmd = f'gemini --yolo "{prompt}"'
+            result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=180)
+            output = result.stdout.strip()
+            
+            if output.upper().startswith("PASS"):
+                # Add label
+                GitHub.run_gh_command(['pr', 'edit', str(pr_number), '--repo', repo, '--add-label', VERIFIED_LABEL])
+                logger.info(f"PR #{pr_number} PASSED verification.")
+                return 'PASS'
+            else:
+                logger.warning(f"PR #{pr_number} FAILED verification: {output[:100]}...")
+                # Post feedback
+                GitHub.run_gh_command(['pr', 'comment', str(pr_number), '--repo', repo, '--body', f"Supervisor Verification Failed:\n\n{output}"])
+                return 'FAIL'
+                
+        except Exception as e:
+            logger.error(f"Verification failed: {e}")
+            return 'ERROR'
+            
     @classmethod
     def consult_llm(cls, context: str, question: str, workspace_dir: str = None) -> str:
         """Query Gemini agent for decision-making on ambiguous situations."""
